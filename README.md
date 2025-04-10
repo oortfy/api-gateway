@@ -105,77 +105,103 @@ curl -H "x-api-key: your-api-key" http://localhost:8080/users
 
 ## ⚙️ Configuration
 
-### Main Configuration (config.yaml)
+### Configuration Files Overview
 
-```yaml
-server:
-  address: ":8080"
-  read_timeout: 30
-  write_timeout: 30
-  idle_timeout: 120
+The API Gateway uses two main configuration files:
+- `config.yaml`: Global gateway configuration
+- `routes.yaml`: Route-specific configuration
 
-logging:
-  level: "${LOG_LEVEL:-info}"
-  format: "${LOG_FORMAT:-json}"
-  output: "stdout"
-  enable_access_log: true
-  production_mode: true
-  stacktrace_level: "error"
-  sampling:
-    enabled: true
-    initial: 100
-    thereafter: 100
+### Global Configuration (config.yaml)
 
-security:
-  tls:
-    enabled: false
-    cert_file: "/certs/server.crt"
-    key_file: "/certs/server.key"
-  enable_xss_protection: true
-  enable_frame_deny: true
-```
+| Section | Key | Description | Default |
+|---------|-----|-------------|---------|
+| **server** |
+| | `address` | Server listening address | ":8080" |
+| | `read_timeout` | Read timeout in seconds | 30 |
+| | `write_timeout` | Write timeout in seconds | 30 |
+| | `idle_timeout` | Idle connection timeout | 120 |
+| | `max_header_bytes` | Maximum header size | 1048576 |
+| | `enable_http2` | Enable HTTP/2 support | true |
+| | `enable_compression` | Enable response compression | true |
+| **auth** |
+| | `jwt_secret` | JWT signing secret | ${JWT_SECRET} |
+| | `jwt_expiry_hours` | JWT token expiry in hours | 24 |
+| | `api_key_validation_url` | API key validation endpoint | ${API_VALIDATION_URL} |
+| | `api_key_header` | API key header name | "x-api-key" |
+| **logging** |
+| | `level` | Log level (debug, info, warn, error) | info |
+| | `format` | Log format (json, console) | json |
+| | `enable_access_log` | Enable access logging | true |
+| | `production_mode` | Enable production logging | true |
+| | `stacktrace_level` | Level for stacktrace capture | error |
+| **security** |
+| | `tls.enabled` | Enable TLS | false |
+| | `tls.cert_file` | TLS certificate path | "/certs/server.crt" |
+| | `tls.key_file` | TLS key path | "/certs/server.key" |
+| | `enable_xss_protection` | Enable XSS protection | true |
+| | `enable_frame_deny` | Enable clickjacking protection | true |
+| | `max_body_size` | Maximum request body size | 10485760 |
+| **cache** |
+| | `enabled` | Enable response caching | true |
+| | `default_ttl` | Default cache TTL in seconds | 60 |
+| | `max_ttl` | Maximum cache TTL | 3600 |
+| | `max_size` | Maximum cache entries | 1000 |
+| **tracing** |
+| | `enabled` | Enable distributed tracing | true |
+| | `provider` | Tracing provider (jaeger) | "jaeger" |
+| | `endpoint` | Jaeger collector endpoint | http://jaeger:14268/api/traces |
+| | `service_name` | Service name in traces | "api-gateway" |
+| | `sample_rate` | Trace sampling rate | 0.1 |
+| **metrics** |
+| | `enabled` | Enable Prometheus metrics | true |
+| | `endpoint` | Metrics endpoint | "/metrics" |
+| | `include_system` | Include system metrics | true |
 
 ### Route Configuration (routes.yaml)
 
-```yaml
-routes:
-  - path: "/users"
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    upstream: "http://user-service:8080"
-    strip_prefix: true
-    require_auth: true
-    timeout: 30
-    
-    rate_limit:
-      requests: 100
-      period: "minute"
-    
-    circuit_breaker:
-      enabled: true
-      threshold: 5
-      timeout: 30
-      max_concurrent: 100
-    
-    retry_policy:
-      enabled: true
-      attempts: 3
-      per_try_timeout: 5
-      retry_on: ["503", "connect-failure"]
-    
-    cache:
-      enabled: true
-      ttl: 300
-      vary_by_headers: ["Accept", "Accept-Encoding"]
-```
+| Section | Key | Description | Example |
+|---------|-----|-------------|---------|
+| **Basic Route** |
+| | `path` | Route path pattern | "/api/v1/users" |
+| | `methods` | Allowed HTTP methods | ["GET", "POST"] |
+| | `upstream` | Backend service URL | "http://user-service:8080" |
+| | `strip_prefix` | Remove path prefix | true |
+| | `require_auth` | Require authentication | true |
+| **Load Balancing** |
+| | `method` | Load balancing algorithm | "round_robin" |
+| | `health_check` | Enable health checks | true |
+| | `endpoints` | List of backend endpoints | ["http://service:8080"] |
+| | `health_check_config.path` | Health check endpoint | "/health" |
+| | `health_check_config.interval` | Check interval in seconds | 10 |
+| **Rate Limiting** |
+| | `requests_per_minute` | Request limit per minute | 1000 |
+| | `burst` | Burst size for rate limiting | 50 |
+| **Circuit Breaker** |
+| | `enabled` | Enable circuit breaker | true |
+| | `threshold` | Error threshold count | 10 |
+| | `timeout` | Reset timeout in seconds | 30 |
+| | `max_concurrent` | Max concurrent requests | 3 |
+| **Retry Policy** |
+| | `max_attempts` | Maximum retry attempts | 3 |
+| | `initial_interval` | Initial retry interval | 1 |
+| | `max_interval` | Maximum retry interval | 5 |
+| | `multiplier` | Backoff multiplier | 2.0 |
+| | `retry_on_status_codes` | Status codes to retry | [500, 502, 503, 504] |
+| **Caching** |
+| | `enabled` | Enable route caching | true |
+| | `ttl` | Cache TTL in seconds | 300 |
+| | `vary_by_headers` | Headers affecting cache | ["Accept"] |
 
 ### Environment Variables
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `LOG_LEVEL` | Logging level (debug, info, warn, error) | info |
-| `LOG_FORMAT` | Log format (json, console) | json |
-| `JWT_SECRET` | Secret for JWT validation | - |
-| `API_VALIDATION_URL` | URL for API key validation | - |
+| `LOG_LEVEL` | Logging level | info |
+| `LOG_FORMAT` | Log format | json |
+| `JWT_SECRET` | JWT signing secret | required |
+| `API_VALIDATION_URL` | API key validation URL | required |
+| `TRACING_ENDPOINT` | Jaeger collector endpoint | http://jaeger:14268/api/traces |
+| `ENV` | Environment name | production |
 
 ## 🛣️ Route Examples
 
