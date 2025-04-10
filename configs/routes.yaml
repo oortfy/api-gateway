@@ -74,13 +74,6 @@ routes:
       enabled: true
       ttl: 120
       cache_authenticated: false
-    load_balancing:
-      method: "round_robin"
-      health_check: true
-      endpoints: [
-        "http://search-service-1:8087",
-        "http://search-service-2:8087"
-      ]
 
   - path: "/api/legacy"
     methods: ["GET", "POST"]

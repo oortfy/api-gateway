@@ -35,7 +35,7 @@ func (r *RetryMiddleware) Retry(next http.Handler, policy *config.RetryPolicy) h
 		recorder := &responseRecorder{
 			ResponseWriter: w,
 			statusCode:     http.StatusOK,
-			body:           &bytes.Buffer{},
+			body:           new(bytes.Buffer),
 		}
 
 		var err error
@@ -93,7 +93,9 @@ func (r *RetryMiddleware) Retry(next http.Handler, policy *config.RetryPolicy) h
 					}
 				}
 				w.WriteHeader(recorder.statusCode)
-				w.Write(recorder.body.Bytes())
+				if recorder.body != nil {
+					w.Write(recorder.body.Bytes())
+				}
 				return
 			}
 
@@ -154,15 +156,28 @@ type responseRecorder struct {
 // WriteHeader captures the status code
 func (r *responseRecorder) WriteHeader(statusCode int) {
 	r.statusCode = statusCode
+	r.ResponseWriter.WriteHeader(statusCode)
 }
 
 // Write captures the response body
 func (r *responseRecorder) Write(b []byte) (int, error) {
+	// Ensure the body buffer is initialized
+	if r.body == nil {
+		r.body = new(bytes.Buffer)
+	}
+
+	// Write to the underlying response writer as well
+	r.ResponseWriter.Write(b)
+
 	return r.body.Write(b)
 }
 
 // Reset clears the recorder for reuse
 func (r *responseRecorder) Reset() {
 	r.statusCode = http.StatusOK
-	r.body.Reset()
+	if r.body != nil {
+		r.body.Reset()
+	} else {
+		r.body = new(bytes.Buffer)
+	}
 }

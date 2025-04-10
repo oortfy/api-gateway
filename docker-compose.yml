@@ -19,6 +19,12 @@ services:
       - ./configs:/app/configs
     depends_on:
       - auth-service
+      - user-service
+      - product-service
+      - order-service
+      - search-service
+      - websocket-service
+      - scan-job-service
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
@@ -74,6 +80,39 @@ services:
       - SERVICE_NAME=order-service
       - PORT=8084
       - RESPONSE_DELAY=300
+    networks:
+      - gateway-network
+      
+  search-service:
+    image: mock-service:latest
+    ports:
+      - "8087:8087"
+    environment:
+      - SERVICE_NAME=search-service
+      - PORT=8087
+      - RESPONSE_DELAY=150
+    networks:
+      - gateway-network
+
+  websocket-service:
+    image: mock-service:latest
+    ports:
+      - "8086:8086"
+    environment:
+      - SERVICE_NAME=websocket-service
+      - PORT=8086
+      - RESPONSE_DELAY=50
+    networks:
+      - gateway-network
+
+  scan-job-service:
+    image: mock-service:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=scan-job-service
+      - PORT=8001
+      - RESPONSE_DELAY=100
     networks:
       - gateway-network
 
