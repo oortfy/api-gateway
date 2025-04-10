@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 	"time"
 
@@ -13,6 +12,14 @@ import (
 	"api-gateway/internal/server"
 	"api-gateway/pkg/logger"
 )
+
+// getEnvOrDefault gets environment variable or returns the default value
+func getEnvOrDefault(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
 
 func main() {
 	// Load configuration
@@ -22,11 +29,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize logger with configuration
+	// Initialize logger with configuration, using environment variables with fallback to config values
 	logConfig := logger.Config{
-		Level:           os.Getenv("LOG_LEVEL"),
-		Format:          os.Getenv("LOG_FORMAT"),
-		Output:          "stdout",
+		Level:           getEnvOrDefault("LOG_LEVEL", cfg.Logging.Level),
+		Format:          getEnvOrDefault("LOG_FORMAT", cfg.Logging.Format),
+		Output:          getEnvOrDefault("LOG_OUTPUT", cfg.Logging.Output),
 		ProductionMode:  true,
 		StacktraceLevel: "error",
 		Sampling: &logger.SamplingConfig{
@@ -36,8 +43,8 @@ func main() {
 		},
 		Fields: map[string]string{
 			"service":     "api-gateway",
-			"environment": os.Getenv("ENV"),
-			"version":     os.Getenv("VERSION"),
+			"environment": getEnvOrDefault("ENV", "production"),
+			"version":     getEnvOrDefault("VERSION", "1.0.0"),
 		},
 		Redact: []string{
 			"jwt_secret",
@@ -66,7 +73,10 @@ func main() {
 			logger.Error(err))
 	}
 
-	log.Info("API Gateway is running", logger.String("address", cfg.Server.Address))
+	log.Info("API Gateway is running",
+		logger.String("address", cfg.Server.Address),
+		logger.String("env", logConfig.Fields["environment"]),
+		logger.String("version", logConfig.Fields["version"]))
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
@@ -83,21 +93,4 @@ func main() {
 	}
 
 	log.Info("API Gateway has been shutdown gracefully")
-}
-
-// getEnv retrieves environment variable or returns the provided default value
-func getEnv(key, defaultValue string) string {
-	value := os.Getenv(key)
-	if value == "" {
-		return defaultValue
-	}
-
-	// Convert to absolute path if not already
-	if !filepath.IsAbs(value) {
-		if absPath, err := filepath.Abs(value); err == nil {
-			return absPath
-		}
-	}
-
-	return value
 }
