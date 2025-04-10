@@ -13,6 +13,7 @@ A high-performance API Gateway written in Go that supports REST and WebSocket pr
 - Graceful shutdown
 - Docker support
 - External configuration files
+- Environment-based configuration
 
 ## Configuration
 
@@ -25,9 +26,17 @@ These files can be located anywhere on the filesystem and specified using either
 
 ### Environment Variables
 
-- `JWT_SECRET`: Secret key used for JWT validation (required if using JWT auth)
+All sensitive configuration values use environment variables to avoid hardcoding credentials:
+
+**Required Environment Variables:**
+- `JWT_SECRET`: Secret key used for JWT validation
+- `API_VALIDATION_URL`: URL for validating API keys (e.g., "http://auth-service:8081/auth/validate-api-key")
+
+**Optional Environment Variables:**
 - `CONFIG_PATH`: Path to the config.yaml file (default: configs/config.yaml)
 - `ROUTES_PATH`: Path to the routes.yaml file (default: configs/routes.yaml)
+- `LOG_LEVEL`: Logging level (default: info)
+- `LOG_FORMAT`: Logging format (default: json)
 
 ## Quick Start
 
@@ -43,8 +52,11 @@ These files can be located anywhere on the filesystem and specified using either
 2. Set the required environment variables
    ```
    export JWT_SECRET=your_jwt_secret_here
+   export API_VALIDATION_URL=http://auth-service:8081/auth/validate-api-key
    export CONFIG_PATH=/path/to/config.yaml
    export ROUTES_PATH=/path/to/routes.yaml
+   export LOG_LEVEL=debug  # Optional
+   export LOG_FORMAT=json  # Optional
    ```
 
 3. Run the application
@@ -63,18 +75,49 @@ These files can be located anywhere on the filesystem and specified using either
    ```
    docker run -p 8080:8080 \
      -e JWT_SECRET=your_jwt_secret_here \
+     -e API_VALIDATION_URL=http://auth-service:8081/auth/validate-api-key \
+     -e LOG_LEVEL=info \
      -v $(pwd)/configs:/app/configs \
      api-gateway
    ```
 
 ### Using Docker Compose
 
-1. Run with docker-compose
+1. Edit the docker-compose.yml file to set your environment variables:
+   ```yaml
+   services:
+     api-gateway:
+       # ... other settings ...
+       environment:
+         - JWT_SECRET=your_jwt_secret_here
+         - API_VALIDATION_URL=http://auth-service:8081/auth/validate-api-key
+         - LOG_LEVEL=info
+   ```
+
+2. Run with docker-compose
    ```
    docker-compose up -d
    ```
 
    This will mount the local `configs` directory into the container, allowing you to update the configuration files without rebuilding the image.
+
+## Configuration Templates
+
+The config.yaml file supports environment variable substitution using the `${VARIABLE_NAME}` syntax. For example:
+
+```yaml
+auth:
+  jwt_secret: "${JWT_SECRET}"
+  api_key_validation_url: "${API_VALIDATION_URL}"
+```
+
+You can also specify default values for optional variables:
+
+```yaml
+logging:
+  level: "${LOG_LEVEL:-info}"
+  format: "${LOG_FORMAT:-json}"
+```
 
 ## Route Configuration
 
@@ -87,7 +130,6 @@ routes:
     upstream: "http://user-service:8082"
     strip_prefix: true
     require_auth: true
-    allowed_roles: ["admin", "user"]
     timeout: 30
 ```
 
@@ -110,9 +152,9 @@ WebSocket routes can be configured with the `websocket` property:
 The API Gateway supports two authentication methods:
 
 1. JWT tokens (via the `Authorization` header with the Bearer scheme)
-2. API keys (via the `X-API-Auth-Token` header)
+2. API keys (via the `x-api-key` header)
 
-Each route can be configured to require authentication and restrict access to specific roles.
+Each route can be configured to require authentication with the `require_auth` setting.
 
 ## Health Check
 

@@ -9,8 +9,11 @@ services:
       - "8080:8080"
     environment:
       - JWT_SECRET=your_jwt_secret_here
+      - API_VALIDATION_URL=http://auth-service:8081/auth/validate-api-key
       - CONFIG_PATH=/app/configs/config.yaml
       - ROUTES_PATH=/app/configs/routes.yaml
+      - LOG_LEVEL=info
+      - LOG_FORMAT=json
     volumes:
       - ./configs:/app/configs
     restart: unless-stopped

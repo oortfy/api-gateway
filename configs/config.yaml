@@ -12,4 +12,4 @@ auth:
 
 logging:
   level: "${LOG_LEVEL:-info}"
-  format: "${LOG_FORMAT:-json}" 
+  format: "${LOG_FORMAT:-json}"
