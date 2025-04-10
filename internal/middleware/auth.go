@@ -24,6 +24,15 @@ func NewAuthMiddleware(authService *auth.AuthService, authConfig *config.AuthCon
 	}
 }
 
+// safeError is a helper function to safely write error responses
+func safeError(w http.ResponseWriter, msg string, statusCode int) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(statusCode)
+	// We ignore any write errors as there's not much we can do about them
+	w.Write([]byte(msg))
+}
+
 // Authenticate checks if the request has valid authentication
 func (m *AuthMiddleware) Authenticate(next http.Handler, route config.Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -49,16 +58,16 @@ func (m *AuthMiddleware) Authenticate(next http.Handler, route config.Route) htt
 				logger.Error(err),
 			)
 
-			// Send appropriate error response
+			// Send appropriate error response using our safe error function
 			switch err {
 			case auth.ErrNoToken:
-				http.Error(w, "Authorization required", http.StatusUnauthorized)
+				safeError(w, "Authorization required", http.StatusUnauthorized)
 			case auth.ErrInvalidToken, auth.ErrExpiredToken:
-				http.Error(w, err.Error(), http.StatusUnauthorized)
+				safeError(w, err.Error(), http.StatusUnauthorized)
 			case auth.ErrForbidden:
-				http.Error(w, "Forbidden: Insufficient permissions", http.StatusForbidden)
+				safeError(w, "Forbidden: Insufficient permissions", http.StatusForbidden)
 			default:
-				http.Error(w, "Authentication failed", http.StatusUnauthorized)
+				safeError(w, "Authentication failed", http.StatusUnauthorized)
 			}
 			return
 		}
@@ -68,7 +77,7 @@ func (m *AuthMiddleware) Authenticate(next http.Handler, route config.Route) htt
 				logger.String("path", r.URL.Path),
 				logger.String("method", r.Method),
 			)
-			http.Error(w, "Authentication failed", http.StatusUnauthorized)
+			safeError(w, "Authentication failed", http.StatusUnauthorized)
 			return
 		}
 

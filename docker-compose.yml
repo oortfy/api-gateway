@@ -1,4 +1,4 @@
-version: '3'
+version: '3.8'
 
 services:
   api-gateway:
@@ -14,9 +14,117 @@ services:
       - ROUTES_PATH=/app/configs/routes.yaml
       - LOG_LEVEL=info
       - LOG_FORMAT=json
+      - ENV=development
+      - VERSION=1.0.0
+      - TRACING_ENDPOINT=http://jaeger:14268/api/traces
     volumes:
       - ./configs:/app/configs
+    depends_on:
+      - auth-service
+      - user-service
+      - product-service
+      - order-service
+      - search-service
+      - websocket-service
+      - scan-job-service
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    networks:
+      - gateway-network
+
+  auth-service:
+    image: mock-service:latest
+    build:
+      context: ./tests/mock_service
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8081"
+    environment:
+      - SERVICE_NAME=auth-service
+      - PORT=8081
+      - RESPONSE_DELAY=100
+    networks:
+      - gateway-network
+
+  # Mock services for testing
+  user-service:
+    image: mock-service:latest
+    ports:
+      - "8082:8082"
+    environment:
+      - SERVICE_NAME=user-service
+      - PORT=8082
+      - RESPONSE_DELAY=100
+    networks:
+      - gateway-network
+
+  product-service:
+    image: mock-service:latest
+    ports:
+      - "8083:8083"
+    environment:
+      - SERVICE_NAME=product-service
+      - PORT=8083
+      - RESPONSE_DELAY=200
+    networks:
+      - gateway-network
+
+  order-service:
+    image: mock-service:latest
+    ports:
+      - "8084:8084"
+    environment:
+      - SERVICE_NAME=order-service
+      - PORT=8084
+      - RESPONSE_DELAY=300
+    networks:
+      - gateway-network
+      
+  search-service:
+    image: mock-service:latest
+    ports:
+      - "8087:8087"
+    environment:
+      - SERVICE_NAME=search-service
+      - PORT=8087
+      - RESPONSE_DELAY=150
+    networks:
+      - gateway-network
+
+  websocket-service:
+    image: mock-service:latest
+    ports:
+      - "8086:8086"
+    environment:
+      - SERVICE_NAME=websocket-service
+      - PORT=8086
+      - RESPONSE_DELAY=50
+    networks:
+      - gateway-network
+
+  scan-job-service:
+    image: mock-service:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - SERVICE_NAME=scan-job-service
+      - PORT=8001
+      - RESPONSE_DELAY=100
+    networks:
+      - gateway-network
+
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "16686:16686"  # UI
+      - "14268:14268"  # HTTP collector
+    environment:
+      - COLLECTOR_ZIPKIN_HTTP_PORT=9411
     networks:
       - gateway-network
 
