@@ -47,8 +47,8 @@ cors:
   enabled: true
   allow_all_origins: false
   allowed_origins: ["https://example.com", "https://*.example.org"]
-  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-  allowed_headers: ["Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-API-Auth-Token"]
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"]
+  allowed_headers: ["Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-API-Key", "X-API-Auth-Token"]
   exposed_headers: ["Content-Length", "Content-Type"]
   allow_credentials: true
   max_age: 86400
@@ -61,6 +61,6 @@ metrics:
 tracing:
   enabled: true
   provider: "jaeger"
-  endpoint: "http://jaeger:14268/api/traces"
+  endpoint: "${TRACING_ENDPOINT:-http://jaeger:14268/api/traces}"
   service_name: "api-gateway"
   sample_rate: 0.1

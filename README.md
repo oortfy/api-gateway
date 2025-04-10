@@ -44,13 +44,14 @@ All sensitive configuration values use environment variables to avoid hardcoding
 - `ROUTES_PATH`: Path to the routes.yaml file (default: configs/routes.yaml)
 - `LOG_LEVEL`: Logging level (default: info)
 - `LOG_FORMAT`: Logging format (default: json)
+- `TRACING_ENDPOINT`: URL for sending traces (default: http://jaeger:14268/api/traces)
 
 ## Quick Start
 
 ### Prerequisites
 
 - Go 1.16 or higher
-- Docker (optional)
+- Docker and Docker Compose (for full testing environment)
 
 ### Running Locally
 
@@ -88,25 +89,117 @@ All sensitive configuration values use environment variables to avoid hardcoding
      api-gateway
    ```
 
-### Using Docker Compose
+### Using Docker Compose (Recommended for Testing)
 
-1. Edit the docker-compose.yml file to set your environment variables:
-   ```yaml
-   services:
-     api-gateway:
-       # ... other settings ...
-       environment:
-         - JWT_SECRET=your_jwt_secret_here
-         - API_VALIDATION_URL=http://auth-service:8081/auth/validate-api-key
-         - LOG_LEVEL=info
-   ```
+The included Docker Compose setup provides a complete environment for testing all features of the API Gateway, including mock services for each route.
 
-2. Run with docker-compose
+1. Start the environment with mock services:
    ```
    docker-compose up -d
    ```
 
-   This will mount the local `configs` directory into the container, allowing you to update the configuration files without rebuilding the image.
+2. To view logs:
+   ```
+   docker-compose logs -f api-gateway
+   ```
+
+3. To stop the environment:
+   ```
+   docker-compose down
+   ```
+
+## Testing All Features
+
+After starting the Docker Compose environment, you can test the various features of the API Gateway:
+
+### 1. Basic Routing
+
+Test basic routing to the user service:
+```bash
+curl -X GET http://localhost:8080/api/users
+```
+
+### 2. Authentication
+
+Test authentication (API Key):
+```bash
+curl -X GET http://localhost:8080/api/users -H "X-API-Key: test-api-key"
+```
+
+Test authentication (JWT - requires a valid JWT token):
+```bash
+curl -X GET http://localhost:8080/api/users -H "Authorization: Bearer YOUR_JWT_TOKEN"
+```
+
+To generate a test JWT token:
+```bash
+# Install jwt-cli if needed
+# npm install -g jwt-cli
+jwt sign --secret your_jwt_secret_here '{"sub": "test-user", "name": "Test User", "role": "admin"}'
+```
+
+### 3. Caching
+
+Test caching by making repeated requests to the product service:
+```bash
+curl -X GET http://localhost:8080/api/products -H "X-API-Key: test-api-key"
+```
+
+You should see faster response times on subsequent requests.
+
+### 4. Rate Limiting
+
+Test rate limiting by making multiple rapid requests to the search endpoint:
+```bash
+for i in {1..60}; do curl -X GET http://localhost:8080/api/search; done
+```
+
+After 50 requests, you should start receiving 429 Too Many Requests responses.
+
+### 5. Circuit Breaker
+
+The circuit breaker can be tested by causing failures in the mock services and observing how the API Gateway responds.
+
+### 6. WebSocket
+
+To test WebSocket functionality, you can use the `websocat` tool:
+```bash
+# Install websocat if needed
+# brew install websocat (macOS) or cargo install websocat (with Rust)
+websocat ws://localhost:8080/ws
+```
+
+### 7. Health Check
+
+Test the health check endpoint:
+```bash
+curl -X GET http://localhost:8080/health
+```
+
+### 8. Tracing
+
+After using the API Gateway, you can view traces in the Jaeger UI:
+1. Open http://localhost:16686 in your browser
+2. Select "api-gateway" from the Service dropdown
+3. Click "Find Traces" to see trace information
+
+### 9. Header Transformation
+
+Test header transformation:
+```bash
+curl -X GET http://localhost:8080/api/products -H "X-API-Key: test-api-key" -v
+```
+
+Observe the response headers to see the added Cache-Control header.
+
+### 10. URL Rewriting
+
+Test URL rewriting:
+```bash
+curl -X GET http://localhost:8080/api/legacy/users/123 -H "X-API-Key: test-api-key" -v
+```
+
+This will rewrite the path to `/internal/users/123` before forwarding to the legacy service.
 
 ## Configuration Templates
 
@@ -126,132 +219,32 @@ logging:
   format: "${LOG_FORMAT:-json}"
 ```
 
-## Route Configuration
+## Troubleshooting
 
-Routes are defined in `routes.yaml`. Here's an example:
+### Common Issues
 
-```yaml
-routes:
-  - path: "/api/users"
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    upstream: "http://user-service:8082"
-    strip_prefix: true
-    require_auth: true
-    timeout: 30
+1. **Connection Refused**: Make sure all required services are running.
+2. **Authentication Errors**: Verify that the JWT_SECRET environment variable is set correctly.
+3. **Missing Routes**: Check the routes.yaml file for correct path, methods, and upstream values.
+4. **Docker Network Issues**: Ensure services can communicate by checking they're on the same network.
+
+### Checking Logs
+
+To check logs of any service:
+```bash
+docker-compose logs -f [service-name]
 ```
 
-### Advanced Route Configuration
-
-The API Gateway supports several advanced features that can be configured per route:
-
-#### Caching
-
-Enable response caching for improved performance:
-
-```yaml
-  - path: "/api/products"
-    upstream: "http://product-service:8083"
-    methods: ["GET"]
-    cache:
-      enabled: true
-      ttl: 300  # Cache TTL in seconds
-      cache_authenticated: false  # Whether to cache authenticated requests
+Example:
+```bash
+docker-compose logs -f api-gateway
+docker-compose logs -f auth-service
 ```
 
-The cache middleware stores responses in memory and serves them for GET requests when available, respecting the configured TTL.
-
-#### Circuit Breaker
-
-Protect upstream services from cascading failures:
-
-```yaml
-  - path: "/api/orders"
-    upstream: "http://order-service:8084"
-    circuit_breaker:
-      enabled: true
-      threshold: 5  # Number of failures before opening
-      timeout: 30   # Seconds before attempting to close
-      max_concurrent: 100  # Maximum concurrent requests
+For all services:
+```bash
+docker-compose logs -f
 ```
-
-The circuit breaker pattern prevents overwhelming a struggling service by temporarily refusing connections after detecting failures.
-
-#### Rate Limiting
-
-Control request rates to protect upstream services:
-
-```yaml
-  - path: "/api/search"
-    upstream: "http://search-service:8085"
-    rate_limit:
-      requests: 100  # Maximum requests
-      period: "1m"   # Time period (s, m, h)
-```
-
-#### Header Transformation
-
-Modify request and response headers:
-
-```yaml
-  - path: "/api/legacy"
-    upstream: "http://legacy-service:8087"
-    header_transform:
-      request:
-        "X-Source": "api-gateway"
-      response:
-        "Access-Control-Allow-Origin": "*"
-      remove: ["X-Powered-By"]
-```
-
-#### URL Rewriting
-
-Rewrite URLs before forwarding to upstream services:
-
-```yaml
-  - path: "/api/v2"
-    upstream: "http://service:8088"
-    url_rewrite:
-      patterns:
-        - match: "/api/v2/users/(.*)"
-          replacement: "/internal/users/$1"
-```
-
-#### Retry Policy
-
-Configure retry behavior for failed requests:
-
-```yaml
-  - path: "/api/notifications"
-    upstream: "http://notification-service:8089"
-    retry_policy:
-      enabled: true
-      attempts: 3
-      per_try_timeout: 5
-      retry_on: ["connection_error", "server_error"]
-```
-
-### WebSocket Configuration
-
-WebSocket routes can be configured with the `websocket` property:
-
-```yaml
-  - path: "/ws"
-    upstream: "http://websocket-service:8086"
-    require_auth: true
-    websocket:
-      enabled: true
-      path: "/ws"
-      upstream_path: "/socket"
-```
-
-## Authentication
-
-The API Gateway supports two authentication methods:
-
-1. JWT tokens (via the `Authorization` header with the Bearer scheme)
-2. API keys (via the `x-api-key` header)
-
-Each route can be configured to require authentication with the `require_auth` setting.
 
 ## Architecture
 

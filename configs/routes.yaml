@@ -99,9 +99,19 @@ routes:
         "X-Powered-By": ""
       remove: ["Server"]
 
+  - path: "/api/metrics"
+    methods: ["GET"]
+    upstream: "http://metrics-service:8089"
+    strip_prefix: true
+    require_auth: true
+    timeout: 15
+    rate_limit:
+      requests: 50
+      period: "minute"
+
   - path: "/scanjobmanager"
     methods: ["GET", "POST", "PUT", "DELETE"]
-    upstream: "http://localhost:8001"
+    upstream: "http://scan-job-service:8001"
     strip_prefix: false
     require_auth: true
     timeout: 30
@@ -124,4 +134,13 @@ routes:
       enabled: true
       threshold: 3
       timeout: 60
-      max_concurrent: 200 
+      max_concurrent: 200
+      
+  - path: "/health"
+    methods: ["GET"]
+    upstream: "http://localhost:8080"
+    strip_prefix: false
+    require_auth: false
+    timeout: 5
+    cache:
+      enabled: false 
