@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -24,19 +26,88 @@ type CacheEntry struct {
 
 // CacheMiddleware provides HTTP response caching
 type CacheMiddleware struct {
-	cache  map[string]*CacheEntry
-	mutex  sync.RWMutex
-	config *config.CacheConfig
-	log    logger.Logger
+	cache     map[string]*CacheEntry
+	mutex     sync.RWMutex
+	config    *config.CacheConfig
+	log       logger.Logger
+	size      int
+	evictList []string // List of cache keys ordered by access time
 }
 
 // NewCacheMiddleware creates a new cache middleware
 func NewCacheMiddleware(config *config.CacheConfig, log logger.Logger) *CacheMiddleware {
 	return &CacheMiddleware{
-		cache:  make(map[string]*CacheEntry),
-		config: config,
-		log:    log,
+		cache:     make(map[string]*CacheEntry),
+		config:    config,
+		log:       log,
+		evictList: make([]string, 0),
 	}
+}
+
+// PurgeCache handles cache purge requests
+func (c *CacheMiddleware) PurgeCache(w http.ResponseWriter, r *http.Request) {
+	// Only allow POST method for purging
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+
+	// Get the path pattern to purge from query parameter
+	pathPattern := r.URL.Query().Get("path")
+
+	beforeCount := len(c.cache)
+	if pathPattern != "" {
+		// Purge specific path pattern
+		for key := range c.cache {
+			if strings.Contains(key, pathPattern) {
+				delete(c.cache, key)
+			}
+		}
+	} else {
+		// Purge all cache if no path specified
+		c.cache = make(map[string]*CacheEntry)
+	}
+	afterCount := len(c.cache)
+	purgedCount := beforeCount - afterCount
+
+	c.log.Info("Cache purged",
+		logger.String("path_pattern", pathPattern),
+		logger.Int("purged_entries", purgedCount),
+		logger.Int("remaining_entries", afterCount),
+	)
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	response := map[string]interface{}{
+		"success":           true,
+		"purged_entries":    purgedCount,
+		"remaining_entries": afterCount,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
+// RegisterPurgeEndpoint registers the cache purge endpoint
+func (c *CacheMiddleware) RegisterPurgeEndpoint(router http.Handler) http.Handler {
+	if !c.config.Enabled || c.config.PurgeEndpoint == "" {
+		return router
+	}
+
+	handler := http.NewServeMux()
+
+	// Copy all requests to the original router
+	handler.Handle("/", router)
+
+	// Add the purge endpoint
+	handler.HandleFunc(c.config.PurgeEndpoint, c.PurgeCache)
+
+	c.log.Info("Registered cache purge endpoint",
+		logger.String("endpoint", c.config.PurgeEndpoint),
+	)
+
+	return handler
 }
 
 // Cache middleware caches responses for GET requests
@@ -187,11 +258,29 @@ func (c *CacheMiddleware) storeInCache(key string, statusCode int, body []byte, 
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 
+	// Check if we need to evict entries
+	if c.config.MaxSize > 0 && len(c.cache) >= c.config.MaxSize {
+		// Evict oldest entries
+		for _, oldKey := range c.evictList[:len(c.evictList)/2] {
+			delete(c.cache, oldKey)
+		}
+		c.evictList = c.evictList[len(c.evictList)/2:]
+		c.log.Info("Cache eviction performed",
+			logger.Int("evicted_count", len(c.evictList)/2),
+			logger.Int("remaining_entries", len(c.cache)),
+		)
+	}
+
 	// Create a copy of the headers
 	headersCopy := make(http.Header)
 	for k, v := range headers {
 		headersCopy[k] = v
 	}
+
+	// Add cache-related headers
+	headersCopy.Set("Cache-Control", fmt.Sprintf("public, max-age=%d", int(ttl.Seconds())))
+	headersCopy.Set("Age", "0")
+	headersCopy.Set("X-Cache-TTL", fmt.Sprintf("%d", int(ttl.Seconds())))
 
 	// Create a cache entry
 	entry := &CacheEntry{
@@ -201,18 +290,23 @@ func (c *CacheMiddleware) storeInCache(key string, statusCode int, body []byte, 
 		Expiration: time.Now().Add(ttl),
 	}
 
-	// Store in cache
+	// Store in cache and update eviction list
 	c.cache[key] = entry
+	c.evictList = append(c.evictList, key)
 
 	// Set up automatic expiration
-	go func() {
-		time.Sleep(ttl)
+	time.AfterFunc(ttl, func() {
 		c.removeFromCache(key)
-	}()
+	})
 }
 
 // serveFromCache serves a cached response
 func (c *CacheMiddleware) serveFromCache(w http.ResponseWriter, entry *CacheEntry) {
+	// Calculate age of the cache entry
+	ttlStr := entry.Headers.Get("X-Cache-TTL")
+	ttl, _ := strconv.Atoi(ttlStr)
+	age := int(time.Since(entry.Expiration.Add(-time.Duration(ttl) * time.Second)).Seconds())
+
 	// Copy headers from cached response
 	for k, v := range entry.Headers {
 		for _, val := range v {
@@ -220,7 +314,8 @@ func (c *CacheMiddleware) serveFromCache(w http.ResponseWriter, entry *CacheEntr
 		}
 	}
 
-	// Add cache header to indicate this was a cached response
+	// Update cache-related headers
+	w.Header().Set("Age", strconv.Itoa(age))
 	w.Header().Set("X-Cache", "HIT")
 
 	// Set status code and write body

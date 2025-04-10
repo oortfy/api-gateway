@@ -102,6 +102,11 @@ func (s *Server) Start() error {
 		handler = s.metricsMiddleware.RegisterMetricsEndpoint(handler)
 	}
 
+	// Register cache purge endpoint if enabled
+	if s.config.Cache.Enabled {
+		handler = s.cacheMiddleware.RegisterPurgeEndpoint(handler)
+	}
+
 	// Set the final handler
 	s.httpServer.Handler = handler
 
