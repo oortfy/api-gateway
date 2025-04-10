@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -20,6 +21,20 @@ const (
 	// HalfOpen means the circuit breaker is allowing a test request
 	HalfOpen
 )
+
+// String returns a string representation of the circuit breaker state
+func (s CircuitBreakerState) String() string {
+	switch s {
+	case Closed:
+		return "CLOSED"
+	case Open:
+		return "OPEN"
+	case HalfOpen:
+		return "HALF-OPEN"
+	default:
+		return fmt.Sprintf("UNKNOWN(%d)", int(s))
+	}
+}
 
 // CircuitBreakerConfig contains configuration for a circuit breaker
 type CircuitBreakerConfig struct {
@@ -51,6 +66,8 @@ type CircuitBreaker struct {
 	inFlight      int
 	inFlightMutex sync.Mutex
 	log           logger.Logger
+	totalRequests int
+	totalFailures int
 }
 
 // NewCircuitBreaker creates a new circuit breaker
@@ -62,7 +79,7 @@ func NewCircuitBreaker(name string, config CircuitBreakerConfig, log logger.Logg
 		config.Timeout = 30 * time.Second
 	}
 
-	return &CircuitBreaker{
+	cb := &CircuitBreaker{
 		name:        name,
 		state:       Closed,
 		config:      config,
@@ -70,17 +87,43 @@ func NewCircuitBreaker(name string, config CircuitBreakerConfig, log logger.Logg
 		lastFailure: time.Time{},
 		log:         log,
 	}
+
+	log.Info("Circuit breaker created",
+		logger.String("name", name),
+		logger.String("state", cb.state.String()),
+		logger.Int("threshold", config.Threshold),
+		logger.Int("timeout_seconds", int(config.Timeout.Seconds())),
+		logger.Int("max_concurrent", config.MaxConcurrent))
+
+	return cb
 }
 
 // Execute executes a function with circuit breaker protection
 func (cb *CircuitBreaker) Execute(req *http.Request, next http.Handler, w http.ResponseWriter) error {
 	// Check if the circuit is open
+	cb.mutex.RLock()
+	currentState := cb.state
+	currentFailures := cb.failures
+	cb.mutex.RUnlock()
+
+	cb.log.Debug("Circuit breaker status check",
+		logger.String("circuit", cb.name),
+		logger.String("path", req.URL.Path),
+		logger.String("state", currentState.String()),
+		logger.Int("failures", currentFailures),
+		logger.Int("threshold", cb.config.Threshold))
+
 	if !cb.AllowRequest() {
-		cb.log.Debug("Circuit breaker open, request rejected",
+		cb.log.Info("Circuit breaker open, request rejected",
 			logger.String("circuit", cb.name),
 			logger.String("path", req.URL.Path),
-		)
-		http.Error(w, "Service unavailable", http.StatusServiceUnavailable)
+			logger.String("method", req.Method),
+			logger.String("state", currentState.String()),
+			logger.Int("failures", currentFailures),
+			logger.Int("threshold", cb.config.Threshold))
+
+		w.Header().Set("X-Circuit-Breaker", "open")
+		http.Error(w, "Service temporarily unavailable (circuit breaker open)", http.StatusServiceUnavailable)
 		return errors.New("circuit open")
 	}
 
@@ -104,10 +147,19 @@ func (cb *CircuitBreaker) Execute(req *http.Request, next http.Handler, w http.R
 	next.ServeHTTP(crw, req)
 
 	// If status code indicates a server error, record a failure
-	if crw.statusCode >= 500 {
+	if crw.statusCode >= 500 || crw.statusCode == 0 {
 		cb.RecordFailure()
+		cb.log.Debug("Circuit breaker recorded failure",
+			logger.String("circuit", cb.name),
+			logger.String("path", req.URL.Path),
+			logger.Int("status_code", crw.statusCode),
+			logger.Int("failures", cb.failures))
 	} else {
 		cb.RecordSuccess()
+		cb.log.Debug("Circuit breaker recorded success",
+			logger.String("circuit", cb.name),
+			logger.String("path", req.URL.Path),
+			logger.Int("status_code", crw.statusCode))
 	}
 
 	return nil
@@ -117,6 +169,7 @@ func (cb *CircuitBreaker) Execute(req *http.Request, next http.Handler, w http.R
 func (cb *CircuitBreaker) AllowRequest() bool {
 	cb.mutex.RLock()
 	state := cb.state
+	lastFailure := cb.lastFailure
 	cb.mutex.RUnlock()
 
 	switch state {
@@ -125,23 +178,32 @@ func (cb *CircuitBreaker) AllowRequest() bool {
 		return true
 	case Open:
 		// Check if timeout has elapsed to try a test request
-		cb.mutex.Lock()
-		defer cb.mutex.Unlock()
+		timeout := cb.config.Timeout
+		elapsed := time.Since(lastFailure)
 
-		// If timeout has elapsed, transition to half-open
-		if time.Since(cb.lastFailure) > cb.config.Timeout {
-			cb.state = HalfOpen
-			cb.log.Info("Circuit breaker transitioned to half-open",
-				logger.String("circuit", cb.name),
-			)
+		if elapsed > timeout {
+			cb.mutex.Lock()
+			// Double-check the state in case another goroutine changed it
+			if cb.state == Open {
+				cb.state = HalfOpen
+				cb.log.Info("Circuit breaker transitioned to half-open",
+					logger.String("circuit", cb.name),
+					logger.String("elapsed", elapsed.String()),
+					logger.String("timeout", timeout.String()),
+				)
+			}
+			cb.mutex.Unlock()
 			return true
 		}
 
+		cb.log.Debug("Circuit breaker is open, rejecting request",
+			logger.String("circuit", cb.name),
+			logger.String("elapsed", elapsed.String()),
+			logger.String("timeout", timeout.String()),
+		)
 		return false
 	case HalfOpen:
 		// In half-open state, allow only one request for testing
-		cb.mutex.RLock()
-		defer cb.mutex.RUnlock()
 		return true
 	default:
 		return true
@@ -153,6 +215,8 @@ func (cb *CircuitBreaker) RecordSuccess() {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
+	cb.totalRequests++
+
 	switch cb.state {
 	case HalfOpen:
 		// If successful in half-open state, close the circuit
@@ -160,6 +224,8 @@ func (cb *CircuitBreaker) RecordSuccess() {
 		cb.state = Closed
 		cb.log.Info("Circuit breaker closed after successful test request",
 			logger.String("circuit", cb.name),
+			logger.Int("total_requests", cb.totalRequests),
+			logger.Int("total_failures", cb.totalFailures),
 		)
 	case Closed:
 		// Reset failure count in closed state
@@ -172,6 +238,8 @@ func (cb *CircuitBreaker) RecordFailure() {
 	cb.mutex.Lock()
 	defer cb.mutex.Unlock()
 
+	cb.totalRequests++
+	cb.totalFailures++
 	cb.lastFailure = time.Now()
 
 	switch cb.state {
@@ -180,6 +248,8 @@ func (cb *CircuitBreaker) RecordFailure() {
 		cb.state = Open
 		cb.log.Warn("Circuit breaker reopened after failed test request",
 			logger.String("circuit", cb.name),
+			logger.Int("total_requests", cb.totalRequests),
+			logger.Int("total_failures", cb.totalFailures),
 		)
 	case Closed:
 		// Increment failures in closed state
@@ -191,8 +261,32 @@ func (cb *CircuitBreaker) RecordFailure() {
 			cb.log.Warn("Circuit breaker opened after consecutive failures",
 				logger.String("circuit", cb.name),
 				logger.Int("failures", cb.failures),
+				logger.Int("threshold", cb.config.Threshold),
+				logger.Int("total_requests", cb.totalRequests),
+				logger.Int("total_failures", cb.totalFailures),
+			)
+		} else {
+			cb.log.Debug("Circuit breaker failure count increased",
+				logger.String("circuit", cb.name),
+				logger.Int("failures", cb.failures),
+				logger.Int("threshold", cb.config.Threshold),
 			)
 		}
+	}
+}
+
+// GetStatus returns the current state and metrics of the circuit breaker
+func (cb *CircuitBreaker) GetStatus() map[string]interface{} {
+	cb.mutex.RLock()
+	defer cb.mutex.RUnlock()
+
+	return map[string]interface{}{
+		"name":           cb.name,
+		"state":          cb.state.String(),
+		"failures":       cb.failures,
+		"threshold":      cb.config.Threshold,
+		"total_requests": cb.totalRequests,
+		"total_failures": cb.totalFailures,
 	}
 }
 
@@ -237,4 +331,13 @@ type customResponseWriter struct {
 func (crw *customResponseWriter) WriteHeader(statusCode int) {
 	crw.statusCode = statusCode
 	crw.ResponseWriter.WriteHeader(statusCode)
+}
+
+// Write captures the response body and ensures status code is set
+func (crw *customResponseWriter) Write(b []byte) (int, error) {
+	// If WriteHeader hasn't been called yet, set the status to 200 OK
+	if crw.statusCode == 0 {
+		crw.statusCode = http.StatusOK
+	}
+	return crw.ResponseWriter.Write(b)
 }

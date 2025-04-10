@@ -1,7 +1,10 @@
 package middleware
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,15 +42,25 @@ func NewRateLimiter(log logger.Logger) *RateLimiter {
 func (rl *RateLimiter) AddLimit(path string, limit config.RateLimitConfig) {
 	rl.limits[path] = limit
 	rl.buckets[path] = make(map[string]*tokenBucket)
+	rl.log.Info("Rate limit added",
+		logger.String("path", path),
+		logger.Int("requests", limit.Requests),
+		logger.String("period", limit.Period))
 }
 
 // getBucket gets or creates a token bucket for a client
 func (rl *RateLimiter) getBucket(path, clientID string) *tokenBucket {
 	rl.bucketsMutex.RLock()
-	bucket, exists := rl.buckets[path][clientID]
+	pathBuckets, pathExists := rl.buckets[path]
+	if !pathExists {
+		rl.bucketsMutex.RUnlock()
+		return nil // Path not configured for rate limiting
+	}
+
+	bucket, clientExists := pathBuckets[clientID]
 	rl.bucketsMutex.RUnlock()
 
-	if exists {
+	if clientExists {
 		return bucket
 	}
 
@@ -56,7 +69,11 @@ func (rl *RateLimiter) getBucket(path, clientID string) *tokenBucket {
 	defer rl.bucketsMutex.Unlock()
 
 	// Check again to avoid race conditions
-	if bucket, exists = rl.buckets[path][clientID]; exists {
+	if pathBuckets, pathExists = rl.buckets[path]; !pathExists {
+		return nil // Path not configured for rate limiting
+	}
+
+	if bucket, clientExists = pathBuckets[clientID]; clientExists {
 		return bucket
 	}
 
@@ -92,10 +109,43 @@ func (rl *RateLimiter) getBucket(path, clientID string) *tokenBucket {
 			refillRate:     tokensPerSecond,
 			lastRefillTime: time.Now(),
 		}
+
+		rl.log.Debug("New rate limit bucket created",
+			logger.String("path", path),
+			logger.String("client", clientID),
+			logger.Int("max_tokens", int(limit.Requests)),
+			logger.String("refill_rate", fmt.Sprintf("%.4f tokens/sec", tokensPerSecond)))
 	}
 
 	rl.buckets[path][clientID] = bucket
 	return bucket
+}
+
+// getClientIP extracts the client IP from the request, handling common proxy headers
+func (rl *RateLimiter) getClientIP(r *http.Request) string {
+	// Check for X-Forwarded-For header (common in reverse proxies)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		ips := strings.Split(xff, ",")
+		// The leftmost IP is the original client
+		if len(ips) > 0 {
+			clientIP := strings.TrimSpace(ips[0])
+			return clientIP
+		}
+	}
+
+	// Check for X-Real-IP header (used by some proxies)
+	if xrip := r.Header.Get("X-Real-IP"); xrip != "" {
+		return xrip
+	}
+
+	// Extract IP from RemoteAddr
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		// If we can't split, use the whole RemoteAddr
+		ip = r.RemoteAddr
+	}
+
+	return ip
 }
 
 // RateLimit middleware applies rate limiting to requests
@@ -107,24 +157,44 @@ func (rl *RateLimiter) RateLimit(next http.Handler, route config.Route) http.Han
 			return
 		}
 
-		// Use client IP as identifier for rate limiting
-		// In production, you might want to use a more sophisticated method
-		// like API keys or user IDs if available
-		clientID := r.RemoteAddr
+		// Get a unique identifier for this client
+		// In addition to IP, we can use API key or auth info if available
+		clientID := rl.getClientIP(r)
+
+		// Add auth information if available for per-user rate limiting
+		if apiKey := r.Header.Get("X-API-Key"); apiKey != "" {
+			clientID = apiKey // Use API key as identifier if present
+		} else if authHeader := r.Header.Get("Authorization"); authHeader != "" {
+			clientID = authHeader // Use auth token as identifier
+		}
+
+		pathKey := route.Path
+		rl.log.Debug("Rate limit check",
+			logger.String("path", r.URL.Path),
+			logger.String("pathKey", pathKey),
+			logger.String("clientID", clientID))
 
 		// Get the bucket for this client
-		bucket := rl.getBucket(route.Path, clientID)
+		bucket := rl.getBucket(pathKey, clientID)
+		if bucket == nil {
+			rl.log.Warn("No rate limit bucket found for path",
+				logger.String("path", pathKey))
+			next.ServeHTTP(w, r)
+			return
+		}
 
 		// Try to consume a token
 		if allowed := rl.tryConsume(bucket); !allowed {
-			rl.log.Debug("Rate limit exceeded",
+			rl.log.Info("Rate limit exceeded",
 				logger.String("path", r.URL.Path),
 				logger.String("method", r.Method),
 				logger.String("client", clientID),
 			)
 
-			w.Header().Set("Retry-After", "1") // Suggest retry after 1 second
-			http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+			w.Header().Set("Retry-After", "60") // Suggest retry after period
+			w.Header().Set("X-RateLimit-Limit", "2")
+			w.Header().Set("X-RateLimit-Remaining", "0")
+			http.Error(w, "Rate limit exceeded. Try again later.", http.StatusTooManyRequests)
 			return
 		}
 

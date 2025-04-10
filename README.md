@@ -242,6 +242,86 @@ curl -X GET http://localhost:8080/api/orders -H "X-API-Key: test-api-key" -v
 docker-compose logs -f api-gateway
 ```
 
+### 12. Circuit Breaker Testing
+
+The circuit breaker is designed to protect your system from cascading failures when a downstream service is experiencing problems. Here's how to properly test it with the `/scanjobmanager` endpoint:
+
+```bash
+# First, ensure the scan-job-service is running and accessible
+docker-compose start scan-job-service
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+
+# Now stop the service to simulate failures
+docker-compose stop scan-job-service
+
+# Make enough requests to trigger the circuit breaker
+# For the scanjobmanager route, the threshold is 10 failures
+for i in {1..15}; do
+  echo "Request $i"
+  curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+  echo -e "\n---"
+  sleep 1
+done
+
+# After the circuit opens, you'll see responses with:
+# "Service temporarily unavailable (circuit breaker open)"
+# And an HTTP status code of 503
+
+# The circuit will remain open for the timeout period (30 seconds)
+# After that, it will allow one test request in "half-open" state
+
+# Wait for the timeout period
+echo "Waiting for circuit timeout (30 seconds)..."
+sleep 30
+
+# Make another request - this will be the test request in half-open state
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+
+# Since the service is still down, this should re-open the circuit
+# Make another request to confirm the circuit is open again
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+
+# Now start the service again
+docker-compose start scan-job-service
+sleep 5 # Give it time to start
+
+# Wait for the timeout again
+sleep 30
+
+# Make a request - this should succeed and close the circuit
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+
+# Make another request to confirm the circuit is closed
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+```
+
+#### Circuit Breaker States:
+
+1. **Closed** - Normal operation, requests flow through
+2. **Open** - After threshold failures (10), all requests are immediately rejected
+3. **Half-Open** - After timeout (30s), allows one test request to check if the service recovered
+
+#### Troubleshooting Circuit Breaker Issues:
+
+If the circuit breaker doesn't seem to be working:
+
+1. Check the API gateway logs for circuit breaker events:
+   ```bash
+   docker-compose logs api-gateway | grep "circuit"
+   ```
+
+2. Verify the service is actually failing with 5xx errors:
+   ```bash
+   curl -v http://localhost:8080/scanjobmanager -H "X-API-Key: test-api-key"
+   ```
+
+3. Make sure you're making enough requests to reach the threshold (10 for /scanjobmanager)
+
+4. Confirm that service downtime is properly simulated:
+   ```bash
+   docker-compose ps scan-job-service
+   ```
+
 ## Running Tests
 
 The project includes a comprehensive test suite. To run various test categories:
@@ -297,6 +377,26 @@ logging:
 4. **Docker Network Issues**: Ensure services can communicate by checking they're on the same network.
 5. **Nil Pointer Exceptions**: If you encounter nil pointer exceptions in logs, verify all service dependencies are correctly started.
 6. **Unavailable Services**: The Docker Compose file defines mock versions of all required services. Make sure all are running with `docker-compose ps`.
+7. **Rate Limiting Issues**: Rate limits are applied per client based on their API key (or IP address if no authentication is provided). When testing with the same API key, requests will be limited according to the configured rate limit for that route.
+
+### Testing Rate Limiting
+
+Rate limiting works by restricting the number of requests per client within a specified time period:
+
+```bash
+# Test rate limiting with different API keys:
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: key1"
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: key1"
+# Should be rate limited after 2 requests
+
+# A different client can still make requests:
+curl -X GET http://localhost:8080/scanjobmanager -H "X-API-Key: key2"
+```
+
+If you're testing the rate limiter and it's not working as expected:
+- Check that your route has the correct rate limit configuration in routes.yaml
+- Verify you're using the same API key for each request (or no key for IP-based limiting)
+- Look at the API Gateway logs to see if rate limit events are being recorded
 
 ### Testing Specific Services
 
