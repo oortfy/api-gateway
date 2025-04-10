@@ -61,6 +61,6 @@ metrics:
 tracing:
   enabled: true
   provider: "jaeger"
-  endpoint: "${TRACING_ENDPOINT:-http://jaeger:14268/api/traces}"
+  endpoint: "${TRACING_ENDPOINT:-http://localhost:14268/api/traces}"
   service_name: "api-gateway"
   sample_rate: 0.1
