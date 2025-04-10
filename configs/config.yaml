@@ -2,6 +2,10 @@ server:
   address: ":8080"
   read_timeout: 30
   write_timeout: 30
+  idle_timeout: 120
+  max_header_bytes: 1048576
+  enable_http2: true
+  enable_compression: true
 
 auth:
   jwt_secret: "${JWT_SECRET}"
@@ -13,3 +17,50 @@ auth:
 logging:
   level: "${LOG_LEVEL:-info}"
   format: "${LOG_FORMAT:-json}"
+  output: "stdout"
+  enable_access_log: true
+
+security:
+  tls:
+    enabled: false
+    cert_file: "/certs/server.crt"
+    key_file: "/certs/server.key"
+    min_version: "TLS1.2"
+  enable_xss_protection: true
+  enable_frame_deny: true
+  enable_content_type_nosniff: true
+  enable_hsts: true
+  hsts_max_age: 31536000
+  trusted_proxies: ["127.0.0.1", "10.0.0.0/8"]
+  max_body_size: 10485760
+
+cache:
+  enabled: true
+  default_ttl: 60
+  max_ttl: 3600
+  max_size: 1000
+  include_host: true
+  vary_headers: ["Accept", "Accept-Encoding", "Authorization"]
+  purge_endpoint: "/admin/cache/purge"
+
+cors:
+  enabled: true
+  allow_all_origins: false
+  allowed_origins: ["https://example.com", "https://*.example.org"]
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  allowed_headers: ["Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With", "X-API-Auth-Token"]
+  exposed_headers: ["Content-Length", "Content-Type"]
+  allow_credentials: true
+  max_age: 86400
+
+metrics:
+  enabled: true
+  endpoint: "/metrics"
+  include_system: true
+
+tracing:
+  enabled: true
+  provider: "jaeger"
+  endpoint: "http://jaeger:14268/api/traces"
+  service_name: "api-gateway"
+  sample_rate: 0.1

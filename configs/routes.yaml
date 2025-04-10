@@ -5,6 +5,14 @@ routes:
     strip_prefix: true
     require_auth: true
     timeout: 30
+    circuit_breaker:
+      enabled: true
+      threshold: 5
+      timeout: 30
+      max_concurrent: 100
+    rate_limit:
+      requests: 100
+      period: "minute"
 
   - path: "/api/products"
     methods: ["GET", "POST", "PUT", "DELETE"]
@@ -12,6 +20,15 @@ routes:
     strip_prefix: true
     require_auth: true
     timeout: 30
+    cache:
+      enabled: true
+      ttl: 300
+      cache_authenticated: false
+    header_transform:
+      request:
+        "X-Source": "api-gateway"
+      response:
+        "Cache-Control": "public, max-age=300"
 
   - path: "/api/orders"
     methods: ["GET", "POST", "PUT", "DELETE"]
@@ -19,6 +36,16 @@ routes:
     strip_prefix: true
     require_auth: true
     timeout: 30
+    circuit_breaker:
+      enabled: true
+      threshold: 3
+      timeout: 60
+      max_concurrent: 50
+    retry_policy:
+      enabled: true
+      attempts: 3
+      per_try_timeout: 5
+      retry_on: ["connection_error", "server_error"]
 
   - path: "/api/public"
     methods: ["GET"]
@@ -26,6 +53,51 @@ routes:
     strip_prefix: true
     require_auth: false
     timeout: 30
+    cache:
+      enabled: true
+      ttl: 600
+      cache_authenticated: false
+    rate_limit:
+      requests: 500
+      period: "minute"
+
+  - path: "/api/search"
+    methods: ["GET"]
+    upstream: "http://search-service:8087"
+    strip_prefix: true
+    require_auth: false
+    timeout: 45
+    rate_limit:
+      requests: 50
+      period: "minute"
+    cache:
+      enabled: true
+      ttl: 120
+      cache_authenticated: false
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      endpoints: [
+        "http://search-service-1:8087",
+        "http://search-service-2:8087"
+      ]
+
+  - path: "/api/legacy"
+    methods: ["GET", "POST"]
+    upstream: "http://legacy-service:8088"
+    strip_prefix: true
+    require_auth: true
+    timeout: 60
+    url_rewrite:
+      patterns:
+        - match: "/api/legacy/users/(.*)"
+          replacement: "/internal/users/$1"
+    header_transform:
+      request:
+        "X-Legacy-System": "true"
+      response:
+        "X-Powered-By": ""
+      remove: ["Server"]
 
   - path: "/scanjobmanager"
     methods: ["GET", "POST", "PUT", "DELETE"]
@@ -33,6 +105,11 @@ routes:
     strip_prefix: false
     require_auth: true
     timeout: 30
+    circuit_breaker:
+      enabled: true
+      threshold: 5
+      timeout: 30
+      max_concurrent: 50
 
   - path: "/ws"
     upstream: "http://websocket-service:8086"
@@ -42,4 +119,9 @@ routes:
     websocket:
       enabled: true
       path: "/ws"
-      upstream_path: "/socket" 
+      upstream_path: "/socket"
+    circuit_breaker:
+      enabled: true
+      threshold: 3
+      timeout: 60
+      max_concurrent: 200 

@@ -14,6 +14,13 @@ A high-performance API Gateway written in Go that supports REST and WebSocket pr
 - Docker support
 - External configuration files
 - Environment-based configuration
+- Response caching with TTL
+- Circuit breaker pattern for fault tolerance
+- Rate limiting
+- Header transformations
+- URL rewriting
+- Load balancing
+- Retry policies
 
 ## Configuration
 
@@ -133,6 +140,96 @@ routes:
     timeout: 30
 ```
 
+### Advanced Route Configuration
+
+The API Gateway supports several advanced features that can be configured per route:
+
+#### Caching
+
+Enable response caching for improved performance:
+
+```yaml
+  - path: "/api/products"
+    upstream: "http://product-service:8083"
+    methods: ["GET"]
+    cache:
+      enabled: true
+      ttl: 300  # Cache TTL in seconds
+      cache_authenticated: false  # Whether to cache authenticated requests
+```
+
+The cache middleware stores responses in memory and serves them for GET requests when available, respecting the configured TTL.
+
+#### Circuit Breaker
+
+Protect upstream services from cascading failures:
+
+```yaml
+  - path: "/api/orders"
+    upstream: "http://order-service:8084"
+    circuit_breaker:
+      enabled: true
+      threshold: 5  # Number of failures before opening
+      timeout: 30   # Seconds before attempting to close
+      max_concurrent: 100  # Maximum concurrent requests
+```
+
+The circuit breaker pattern prevents overwhelming a struggling service by temporarily refusing connections after detecting failures.
+
+#### Rate Limiting
+
+Control request rates to protect upstream services:
+
+```yaml
+  - path: "/api/search"
+    upstream: "http://search-service:8085"
+    rate_limit:
+      requests: 100  # Maximum requests
+      period: "1m"   # Time period (s, m, h)
+```
+
+#### Header Transformation
+
+Modify request and response headers:
+
+```yaml
+  - path: "/api/legacy"
+    upstream: "http://legacy-service:8087"
+    header_transform:
+      request:
+        "X-Source": "api-gateway"
+      response:
+        "Access-Control-Allow-Origin": "*"
+      remove: ["X-Powered-By"]
+```
+
+#### URL Rewriting
+
+Rewrite URLs before forwarding to upstream services:
+
+```yaml
+  - path: "/api/v2"
+    upstream: "http://service:8088"
+    url_rewrite:
+      patterns:
+        - match: "/api/v2/users/(.*)"
+          replacement: "/internal/users/$1"
+```
+
+#### Retry Policy
+
+Configure retry behavior for failed requests:
+
+```yaml
+  - path: "/api/notifications"
+    upstream: "http://notification-service:8089"
+    retry_policy:
+      enabled: true
+      attempts: 3
+      per_try_timeout: 5
+      retry_on: ["connection_error", "server_error"]
+```
+
 ### WebSocket Configuration
 
 WebSocket routes can be configured with the `websocket` property:
@@ -155,6 +252,26 @@ The API Gateway supports two authentication methods:
 2. API keys (via the `x-api-key` header)
 
 Each route can be configured to require authentication with the `require_auth` setting.
+
+## Architecture
+
+The API Gateway is structured with clean architecture principles:
+
+```
+api-gateway/
+├── cmd/            # Application entry points
+├── configs/        # Configuration files
+├── internal/       # Private application code
+│   ├── auth/       # Authentication logic
+│   ├── config/     # Configuration loading and parsing
+│   ├── handlers/   # HTTP handlers
+│   ├── middleware/ # HTTP middleware (auth, cache, etc.)
+│   ├── models/     # Data models
+│   ├── proxy/      # Proxy implementation (HTTP, WebSocket, circuit breaker)
+│   └── server/     # HTTP server implementation
+└── pkg/            # Public libraries
+    └── logger/     # Structured logging
+```
 
 ## Health Check
 
