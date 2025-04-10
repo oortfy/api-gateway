@@ -4,12 +4,12 @@ server:
   write_timeout: 30
 
 auth:
-  jwt_secret: "wKjmWNpv20rudYo9h6auR9CdGuCpBw9r1f4KeN/vqxU="
+  jwt_secret: "${JWT_SECRET}"
   jwt_expiry_hours: 24
-  api_key_validation_url: "http://localhost:8000/auth/validate-api-key"
+  api_key_validation_url: "${API_VALIDATION_URL}"
   api_key_header: "x-api-key"
   jwt_header: "Authorization"
 
 logging:
-  level: "info"
-  format: "json" 
+  level: "${LOG_LEVEL:-info}"
+  format: "${LOG_FORMAT:-json}" 
