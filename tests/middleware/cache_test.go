@@ -3,7 +3,7 @@ package middleware_test
 import (
 	"api-gateway/internal/config"
 	"api-gateway/internal/middleware"
-	"api-gateway/pkg/logger"
+	"api-gateway/tests/testutils"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,35 +15,10 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// MockLogger is a mock implementation of the logger.Logger interface
-type MockLogger struct {
-	mock.Mock
-}
-
-func (m *MockLogger) Debug(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
-}
-
-func (m *MockLogger) Info(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
-}
-
-func (m *MockLogger) Warn(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
-}
-
-func (m *MockLogger) Error(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
-}
-
-func (m *MockLogger) Fatal(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
-}
-
 // TestCacheMiddleware_BasicCaching tests that responses are cached correctly
 func TestCacheMiddleware_BasicCaching(t *testing.T) {
 	// Setup
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	mockLogger.On("Debug", mock.MatchedBy(func(msg string) bool { return true }), mock.Anything).Return()
 
 	cacheConfig := &config.CacheConfig{
@@ -106,7 +81,7 @@ func TestCacheMiddleware_BasicCaching(t *testing.T) {
 // TestCacheMiddleware_ShouldNotCacheNonGetRequests tests that non-GET requests are not cached
 func TestCacheMiddleware_ShouldNotCacheNonGetRequests(t *testing.T) {
 	// Setup
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	// Don't expect any Debug calls for non-GET requests since they're immediately skipped
 	// and no Debug logs are generated
 
@@ -161,7 +136,7 @@ func TestCacheMiddleware_ShouldNotCacheNonGetRequests(t *testing.T) {
 // TestCacheMiddleware_NoCache tests that responses with Cache-Control: no-cache are not cached
 func TestCacheMiddleware_NoCache(t *testing.T) {
 	// Setup
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	// Don't expect any Debug calls for no-cache requests since they're immediately skipped
 	// and no Debug logs are generated
 
@@ -218,7 +193,7 @@ func TestCacheMiddleware_NoCache(t *testing.T) {
 // TestCacheMiddleware_VaryHeaders tests that responses vary based on headers
 func TestCacheMiddleware_VaryHeaders(t *testing.T) {
 	// Setup
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	mockLogger.On("Debug", mock.MatchedBy(func(msg string) bool { return true }), mock.Anything).Return()
 
 	cacheConfig := &config.CacheConfig{
@@ -284,7 +259,7 @@ func TestCacheMiddleware_VaryHeaders(t *testing.T) {
 // TestCacheMiddleware_ErrorResponses tests that error responses are not cached
 func TestCacheMiddleware_ErrorResponses(t *testing.T) {
 	// Setup
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	mockLogger.On("Debug", mock.MatchedBy(func(msg string) bool { return true }), mock.Anything).Return()
 
 	cacheConfig := &config.CacheConfig{
@@ -343,7 +318,7 @@ func TestCacheMiddleware_ErrorResponses(t *testing.T) {
 // TestCacheMiddleware_CacheExpiration tests that cached entries expire
 func TestCacheMiddleware_CacheExpiration(t *testing.T) {
 	// Setup
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	mockLogger.On("Debug", mock.Anything, mock.Anything).Return()
 
 	// Short TTL for test
@@ -413,7 +388,7 @@ func TestCacheMiddleware_CacheExpiration(t *testing.T) {
 // TestCacheMiddleware_Disabled tests that the middleware is bypassed when disabled
 func TestCacheMiddleware_Disabled(t *testing.T) {
 	// Setup with disabled cache
-	mockLogger := new(MockLogger)
+	mockLogger := new(testutils.MockLogger)
 	// Don't expect any Debug calls when cache is disabled
 
 	cacheConfig := &config.CacheConfig{

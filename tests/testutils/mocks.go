@@ -17,23 +17,36 @@ type MockLogger struct {
 }
 
 func (m *MockLogger) Debug(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
+	args := m.Called(msg, fields)
+	_ = args
 }
 
 func (m *MockLogger) Info(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
+	args := m.Called(msg, fields)
+	_ = args
 }
 
 func (m *MockLogger) Warn(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
+	args := m.Called(msg, fields)
+	_ = args
 }
 
 func (m *MockLogger) Error(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
+	args := m.Called(msg, fields)
+	_ = args
 }
 
 func (m *MockLogger) Fatal(msg string, fields ...logger.Field) {
-	m.Called(msg, fields)
+	args := m.Called(msg, fields)
+	_ = args
+}
+
+func (m *MockLogger) With(fields ...logger.Field) logger.Logger {
+	args := m.Called(fields)
+	if ret := args.Get(0); ret != nil {
+		return ret.(logger.Logger)
+	}
+	return m
 }
 
 // MockSpan is a mock implementation of the trace.Span interface

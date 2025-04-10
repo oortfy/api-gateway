@@ -14,6 +14,8 @@ services:
       - ROUTES_PATH=/app/configs/routes.yaml
       - LOG_LEVEL=info
       - LOG_FORMAT=json
+      - ENV=development
+      - VERSION=1.0.0
       - TRACING_ENDPOINT=http://jaeger:14268/api/traces
     volumes:
       - ./configs:/app/configs

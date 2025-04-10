@@ -2,7 +2,7 @@ package main
 
 import (
 	"context"
-	"flag"
+	"fmt"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -15,40 +15,56 @@ import (
 )
 
 func main() {
-	// Parse command line flags
-	configPath := flag.String("config", getEnv("CONFIG_PATH", "configs/config.yaml"), "path to config file")
-	routesPath := flag.String("routes", getEnv("ROUTES_PATH", "configs/routes.yaml"), "path to routes file")
-	flag.Parse()
-
-	// Initialize logger
-	log := logger.NewLogger()
-	log.Info("Starting API Gateway...")
-
 	// Load configuration
-	cfg, err := config.LoadConfig(*configPath)
+	cfg, err := config.LoadConfig("configs/config.yaml")
 	if err != nil {
-		log.Fatal("Failed to load config", logger.Error(err))
+		fmt.Printf("Failed to load config: %v\n", err)
+		os.Exit(1)
 	}
 
-	// Load routes configuration
-	routes, err := config.LoadRoutes(*routesPath)
-	if err != nil {
-		log.Fatal("Failed to load routes", logger.Error(err))
+	// Initialize logger with configuration
+	logConfig := logger.Config{
+		Level:           os.Getenv("LOG_LEVEL"),
+		Format:          os.Getenv("LOG_FORMAT"),
+		Output:          "stdout",
+		ProductionMode:  true,
+		StacktraceLevel: "error",
+		Sampling: &logger.SamplingConfig{
+			Enabled:    true,
+			Initial:    100,
+			Thereafter: 100,
+		},
+		Fields: map[string]string{
+			"service":     "api-gateway",
+			"environment": os.Getenv("ENV"),
+			"version":     os.Getenv("VERSION"),
+		},
+		Redact: []string{
+			"jwt_secret",
+			"api_key",
+			"authorization",
+			"password",
+			"token",
+		},
+		MaxStacktraceLen: 2048,
 	}
 
-	// Log configuration file paths
-	log.Info("Configuration loaded",
-		logger.String("config_path", *configPath),
-		logger.String("routes_path", *routesPath),
-	)
+	log := logger.NewLogger(logConfig)
+
+	// Load route configuration
+	routes, err := config.LoadRoutes("configs/routes.yaml")
+	if err != nil {
+		log.Fatal("Failed to load route config",
+			logger.Error(err),
+			logger.String("config_file", "configs/routes.yaml"))
+	}
 
 	// Create and start server
-	srv := server.NewServer(cfg, routes, log)
-	go func() {
-		if err := srv.Start(); err != nil {
-			log.Fatal("Failed to start server", logger.Error(err))
-		}
-	}()
+	server := server.NewServer(cfg, routes, log)
+	if err := server.Start(); err != nil {
+		log.Fatal("Server failed",
+			logger.Error(err))
+	}
 
 	log.Info("API Gateway is running", logger.String("address", cfg.Server.Address))
 
@@ -62,7 +78,7 @@ func main() {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	if err := srv.Stop(ctx); err != nil {
+	if err := server.Stop(ctx); err != nil {
 		log.Fatal("Server forced to shutdown", logger.Error(err))
 	}
 

@@ -19,6 +19,20 @@ logging:
   format: "${LOG_FORMAT:-json}"
   output: "stdout"
   enable_access_log: true
+  production_mode: true
+  stacktrace_level: "error"
+  sampling:
+    enabled: true
+    initial: 100
+    thereafter: 100
+  fields:
+    service: "api-gateway"
+    environment: "${ENV:-production}"
+  redact:
+    - "jwt_secret"
+    - "api_key"
+    - "authorization"
+  max_stacktrace_length: 2048
 
 security:
   tls:
@@ -61,6 +75,6 @@ metrics:
 tracing:
   enabled: true
   provider: "jaeger"
-  endpoint: "${TRACING_ENDPOINT:-http://jaeger:14268/api/traces}"
+  endpoint: "${TRACING_ENDPOINT:-http://localhost:14268/api/traces}"
   service_name: "api-gateway"
   sample_rate: 0.1
