@@ -51,9 +51,19 @@ type RetryPolicy struct {
 
 // LoadBalancingConfig represents load balancing configuration for a route
 type LoadBalancingConfig struct {
-	Method      string   `yaml:"method"`
-	HealthCheck bool     `yaml:"health_check"`
-	Endpoints   []string `yaml:"endpoints"`
+	Method            string             `yaml:"method"`
+	HealthCheck       bool               `yaml:"health_check"`
+	Endpoints         []string           `yaml:"endpoints"`
+	HealthCheckConfig *HealthCheckConfig `yaml:"health_check_config"`
+}
+
+// HealthCheckConfig represents health check configuration
+type HealthCheckConfig struct {
+	Path               string `yaml:"path"`
+	Interval           int    `yaml:"interval"`
+	Timeout            int    `yaml:"timeout"`
+	HealthyThreshold   int    `yaml:"healthy_threshold"`
+	UnhealthyThreshold int    `yaml:"unhealthy_threshold"`
 }
 
 // HeaderTransform represents header transformation configuration

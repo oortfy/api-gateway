@@ -121,7 +121,12 @@ func (lb *LoadBalancer) getRoundRobinEndpoint(endpoints []*url.URL) *url.URL {
 
 // startHealthCheck periodically checks the health of all endpoints
 func (lb *LoadBalancer) startHealthCheck() {
-	ticker := time.NewTicker(10 * time.Second)
+	interval := 10 * time.Second
+	if lb.config.HealthCheckConfig != nil && lb.config.HealthCheckConfig.Interval > 0 {
+		interval = time.Duration(lb.config.HealthCheckConfig.Interval) * time.Second
+	}
+
+	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
 
 	for {
@@ -139,13 +144,21 @@ func (lb *LoadBalancer) checkEndpointsHealth() {
 
 // checkEndpointHealth checks the health of a single endpoint
 func (lb *LoadBalancer) checkEndpointHealth(endpoint *url.URL) {
-	// Create a health check URL (often /health or /status)
+	// Create a health check URL using configured path or default to /health
 	healthURL := *endpoint
-	healthURL.Path = "/health"
+	healthPath := "/health"
+	if lb.config.HealthCheckConfig != nil && lb.config.HealthCheckConfig.Path != "" {
+		healthPath = lb.config.HealthCheckConfig.Path
+	}
+	healthURL.Path = healthPath
 
-	// Create a client with short timeout
+	// Create a client with configured timeout or default
+	timeout := 2 * time.Second
+	if lb.config.HealthCheckConfig != nil && lb.config.HealthCheckConfig.Timeout > 0 {
+		timeout = time.Duration(lb.config.HealthCheckConfig.Timeout) * time.Second
+	}
 	client := &http.Client{
-		Timeout: 2 * time.Second,
+		Timeout: timeout,
 	}
 
 	// Make the request
@@ -159,15 +172,17 @@ func (lb *LoadBalancer) checkEndpointHealth(endpoint *url.URL) {
 	isHealthy := err == nil && resp != nil && resp.StatusCode >= 200 && resp.StatusCode < 300
 
 	// Only log if status changes
-	if lb.healthMap[endpoint.String()] != isHealthy {
+	currentHealth := lb.healthMap[endpoint.String()]
+	if currentHealth != isHealthy {
 		if isHealthy {
 			lb.log.Info("Endpoint is now healthy",
 				logger.String("endpoint", endpoint.String()),
 			)
 		} else {
+			// Log the error details without using logger.Error to avoid potential panics
 			lb.log.Warn("Endpoint is unhealthy",
 				logger.String("endpoint", endpoint.String()),
-				logger.Error(err),
+				logger.String("reason", getErrorMessage(err)),
 			)
 		}
 	}
@@ -178,4 +193,12 @@ func (lb *LoadBalancer) checkEndpointHealth(endpoint *url.URL) {
 	if resp != nil {
 		resp.Body.Close()
 	}
+}
+
+// getErrorMessage safely extracts error message
+func getErrorMessage(err error) string {
+	if err == nil {
+		return "unknown error"
+	}
+	return err.Error()
 }

@@ -1,16 +1,18 @@
 routes:
-  - path: "/load-balancing"
+  - path: "/scanjobmanager"
+    upstream: "http://localhost:8001"
+    methods: ["GET", "POST", "PUT", "DELETE"]
     load_balancing:
-      method: "round_robin"  # or "random"
+      method: "round_robin"
+      health_check: true
       endpoints:
-        - "http://user-service-1:8080"
-        - "http://user-service-2:8080"
-        - "http://user-service-3:8080"
-      health_check:
-        enabled: true
-        path: "/health"
-        interval: "10s"
-        timeout: "2s"
+        - "http://localhost:8001"
+        - "http://localhost:8002"
+      health_check_config:
+        path: "/scanjobmanager/health"
+        interval: 10
+        timeout: 2
+        
   - path: "/api/users"
     methods: ["GET", "POST", "PUT", "DELETE"]
     upstream: "http://user-service:8082"
