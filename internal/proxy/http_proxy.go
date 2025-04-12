@@ -91,22 +91,44 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 
 			// Extract the real client IP
 			clientIP := util.GetClientIP(req)
+			p.log.Debug("Extracted client IP for HTTP proxy",
+				logger.String("remote_addr", req.RemoteAddr),
+				logger.String("client_ip", clientIP),
+				logger.String("xff_header", req.Header.Get("X-Forwarded-For")),
+				logger.String("xrip_header", req.Header.Get("X-Real-IP")),
+			)
 
-			// Add X-Forwarded headers
+			// Add X-Forwarded headers to preserve client IP information
 			if clientIP != "" {
-				// If X-Forwarded-For exists, we trust it's been set correctly
-				// by an upstream proxy, otherwise we set it to the client IP
-				if _, ok := req.Header["X-Forwarded-For"]; !ok {
+				// For X-Forwarded-For, append our client IP to existing chain if present
+				if xffHeader := req.Header.Get("X-Forwarded-For"); xffHeader != "" {
+					// Keep existing chain and append current client IP to indicate proxy hop
+					// But only do this if clientIP is not already the first IP in the chain
+					// to avoid duplicating the client IP
+					if !strings.HasPrefix(xffHeader, clientIP+",") && xffHeader != clientIP {
+						req.Header.Set("X-Forwarded-For", xffHeader)
+					}
+				} else {
+					// No existing chain, just set the client IP
 					req.Header.Set("X-Forwarded-For", clientIP)
+					p.log.Debug("Set X-Forwarded-For header", logger.String("value", clientIP))
 				}
-				// Always add X-Real-IP header with the client IP
+
+				// Always set X-Real-IP to the original client IP
 				req.Header.Set("X-Real-IP", clientIP)
+				p.log.Debug("Set X-Real-IP header", logger.String("value", clientIP))
 			}
 
 			// Try to resolve country from IP if possible
 			country := util.GetGeoLocation(clientIP, p.log)
 			if country != "" {
 				req.Header.Set("X-Client-Geo-Country", country)
+				p.log.Debug("Set X-Client-Geo-Country header",
+					logger.String("ip", clientIP),
+					logger.String("country", country))
+			} else {
+				p.log.Debug("No country information available for IP",
+					logger.String("ip", clientIP))
 			}
 
 			req.Header.Set("X-Forwarded-Host", req.Host)

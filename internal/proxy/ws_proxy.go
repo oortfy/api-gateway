@@ -113,24 +113,44 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 
 		// Extract the real client IP
 		clientIP := util.GetClientIP(r)
+		p.log.Debug("Extracted client IP for WebSocket proxy",
+			logger.String("remote_addr", r.RemoteAddr),
+			logger.String("client_ip", clientIP),
+			logger.String("xff_header", r.Header.Get("X-Forwarded-For")),
+			logger.String("xrip_header", r.Header.Get("X-Real-IP")),
+		)
 
-		// Add custom headers
+		// Add custom headers to preserve client IP information
 		if clientIP != "" {
-			// If X-Forwarded-For exists, we trust it's been set correctly
-			// by an upstream proxy, otherwise we set it to the client IP
-			if _, ok := r.Header["X-Forwarded-For"]; !ok {
-				headers.Set("X-Forwarded-For", clientIP)
+			// For X-Forwarded-For, handle existing chains properly
+			if xffHeader := r.Header.Get("X-Forwarded-For"); xffHeader != "" {
+				// Keep existing chain but only if clientIP is not already there
+				// to avoid duplicating the client IP
+				if !strings.HasPrefix(xffHeader, clientIP+",") && xffHeader != clientIP {
+					headers.Set("X-Forwarded-For", xffHeader)
+					p.log.Debug("Preserved X-Forwarded-For header", logger.String("value", xffHeader))
+				}
 			} else {
-				headers.Set("X-Forwarded-For", r.Header.Get("X-Forwarded-For"))
+				// No existing chain, just set the client IP
+				headers.Set("X-Forwarded-For", clientIP)
+				p.log.Debug("Set X-Forwarded-For header", logger.String("value", clientIP))
 			}
-			// Always add X-Real-IP header with the client IP
+
+			// Always set X-Real-IP to the original client IP
 			headers.Set("X-Real-IP", clientIP)
+			p.log.Debug("Set X-Real-IP header", logger.String("value", clientIP))
 		}
 
 		// Try to resolve country from IP if possible
 		country := util.GetGeoLocation(clientIP, p.log)
 		if country != "" {
 			headers.Set("X-Client-Geo-Country", country)
+			p.log.Debug("Set X-Client-Geo-Country header",
+				logger.String("ip", clientIP),
+				logger.String("country", country))
+		} else {
+			p.log.Debug("No country information available for IP",
+				logger.String("ip", clientIP))
 		}
 
 		headers.Set("X-Forwarded-Host", r.Host)
