@@ -1,28 +1,23 @@
 routes:
   - path: "/scanjobmanager"
-    upstream: "http://localhost:8001"
+    upstream: "http://scanjobmanager:8001"
     methods: ["GET", "POST", "PUT", "DELETE"]
-    load_balancing:
-      method: "round_robin"
-      health_check: true
-      endpoints:
-        - "http://localhost:8001"
-        - "http://localhost:8001"
-      health_check_config:
-        path: "/scanjobmanager/health"
-        interval: 10
-        timeout: 2
+    strip_prefix: false
+    require_auth: true
+    timeout: 120
     rate_limit:
-      requests_per_minute: 1000
+      requests_per_minute: 100000
+      per_client: true
+      client_requests_per_minute: 100
+      client_identifier: "ip"
     circuit_breaker:
       enabled: true
-      threshold: 10
-      timeout: 30
-      max_concurrent: 3
+      threshold: 30
+      timeout: 120
+      max_concurrent: 10000
     retry_policy:
       max_attempts: 3
       initial_interval: 1
-      max_interval: 5
+      max_interval: 10
       multiplier: 2.0
       retry_on_status_codes: [500, 502, 503, 504]
-    require_auth: true
