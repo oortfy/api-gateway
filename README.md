@@ -45,6 +45,7 @@ A high-performance, feature-rich API Gateway built in Go, designed for microserv
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
+- [Client IP Forwarding and Geolocation](#client-ip-forwarding-and-geolocation)
 
 ## 🚀 Quick Start
 
@@ -329,4 +330,26 @@ Key points:
 - ✅ You can modify the code
 - ✅ You must share modifications back to this project
 - ❌ You cannot sell this software as a standalone product
-- ❌ You cannot distribute closed source versions 
+- ❌ You cannot distribute closed source versions
+
+## Client IP Forwarding and Geolocation
+
+The API Gateway properly forwards the client's real IP address to backend services using the following headers:
+- `X-Forwarded-For`: Contains the client's IP address
+- `X-Real-IP`: Contains the client's IP address
+- `X-Client-Geo-Country`: Contains the client's country code (ISO format, e.g., US, GB, DE)
+
+### IP2Location Integration
+
+The API Gateway uses the free and open-source IP2Location LITE database to provide country-level geolocation information for client IP addresses.
+
+The IP2Location LITE database is included automatically in the Docker image. If you're running the gateway outside of Docker, you can download the database from:
+
+1. Download the free IP2Location LITE DB1 database from [IP2Location LITE](https://lite.ip2location.com/database/ip-country) (free registration required)
+2. Place the `IP2LOCATION-LITE-DB1.BIN` file in one of the following locations:
+   - `./configs/IP2LOCATION-LITE-DB1.BIN` (relative to the API Gateway binary)
+   - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
+   - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
+   - Or specify a custom path using the `IP2LOCATION_DB_PATH` environment variable
+
+If the IP2Location database is not found, the API Gateway will still function normally, but country information will not be included in requests. 

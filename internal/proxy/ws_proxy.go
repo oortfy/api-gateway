@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"api-gateway/internal/config"
+	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
 
 	"github.com/gorilla/websocket"
@@ -110,8 +111,28 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 		headers.Set("Host", upstreamURL.Host)
 		headers.Set("Origin", fmt.Sprintf("%s://%s", upstreamURL.Scheme, upstreamURL.Host))
 
+		// Extract the real client IP
+		clientIP := util.GetClientIP(r)
+
 		// Add custom headers
-		headers.Set("X-Forwarded-For", r.RemoteAddr)
+		if clientIP != "" {
+			// If X-Forwarded-For exists, we trust it's been set correctly
+			// by an upstream proxy, otherwise we set it to the client IP
+			if _, ok := r.Header["X-Forwarded-For"]; !ok {
+				headers.Set("X-Forwarded-For", clientIP)
+			} else {
+				headers.Set("X-Forwarded-For", r.Header.Get("X-Forwarded-For"))
+			}
+			// Always add X-Real-IP header with the client IP
+			headers.Set("X-Real-IP", clientIP)
+		}
+
+		// Try to resolve country from IP if possible
+		country := util.GetGeoLocation(clientIP, p.log)
+		if country != "" {
+			headers.Set("X-Client-Geo-Country", country)
+		}
+
 		headers.Set("X-Forwarded-Host", r.Host)
 		headers.Set("X-Gateway-Proxy", "true")
 

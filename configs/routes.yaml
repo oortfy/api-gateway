@@ -7,7 +7,7 @@ routes:
       health_check: true
       endpoints:
         - "http://localhost:8001"
-        - "http://localhost:8002"
+        - "http://localhost:8001"
       health_check_config:
         path: "/scanjobmanager/health"
         interval: 10

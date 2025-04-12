@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"api-gateway/internal/config"
+	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
 )
 
@@ -88,10 +89,26 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 			// Update the Host header to match the target
 			req.Host = targetURL.Host
 
+			// Extract the real client IP
+			clientIP := util.GetClientIP(req)
+
 			// Add X-Forwarded headers
-			if _, ok := req.Header["X-Forwarded-For"]; !ok {
-				req.Header.Set("X-Forwarded-For", req.RemoteAddr)
+			if clientIP != "" {
+				// If X-Forwarded-For exists, we trust it's been set correctly
+				// by an upstream proxy, otherwise we set it to the client IP
+				if _, ok := req.Header["X-Forwarded-For"]; !ok {
+					req.Header.Set("X-Forwarded-For", clientIP)
+				}
+				// Always add X-Real-IP header with the client IP
+				req.Header.Set("X-Real-IP", clientIP)
 			}
+
+			// Try to resolve country from IP if possible
+			country := util.GetGeoLocation(clientIP, p.log)
+			if country != "" {
+				req.Header.Set("X-Client-Geo-Country", country)
+			}
+
 			req.Header.Set("X-Forwarded-Host", req.Host)
 			req.Header.Set("X-Forwarded-Proto", req.URL.Scheme)
 			req.Header.Set("X-Gateway-Proxy", "true")

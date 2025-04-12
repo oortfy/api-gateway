@@ -44,5 +44,17 @@ WORKDIR /app
 ENV CONFIG_PATH=/app/configs/config.yaml \
     ROUTES_PATH=/app/configs/routes.yaml
 
+# Download IP2Location Lite database
+RUN apk add --no-cache curl unzip && \
+    mkdir -p /app/configs && \
+    # Download the free IP2Location LITE database
+    curl -L "https://download.ip2location.com/lite/IP2LOCATION-LITE-DB1.BIN.ZIP" -o ip2location.zip && \
+    unzip ip2location.zip -d /app/configs && \
+    rm ip2location.zip && \
+    apk del curl unzip
+
+# Set environment variables
+ENV IP2LOCATION_DB_PATH="/app/configs/IP2LOCATION-LITE-DB1.BIN"
+
 # Command to run
 ENTRYPOINT ["/app/apigateway"] 
