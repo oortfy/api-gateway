@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"time"
@@ -11,9 +12,11 @@ import (
 	"api-gateway/internal/handlers"
 	"api-gateway/internal/middleware"
 	"api-gateway/internal/proxy"
+	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
 
 	"github.com/gorilla/mux"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // Server represents the API Gateway server
@@ -91,33 +94,94 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 // Start initializes and starts the server
 func (s *Server) Start() error {
 	// Register routes
-	s.registerRoutes()
+	for _, route := range s.routes.Routes {
+		s.registerRoute(route)
+	}
 
-	// Apply global middleware
-	var handler http.Handler = s.router
+	// Register additional utility endpoints
+	s.registerUtilityEndpoints()
 
-	// Add metrics middleware if enabled
+	// Start the HTTP server
+	s.log.Info("Starting API Gateway server",
+		logger.String("address", s.config.Server.Address),
+	)
+
+	return s.httpServer.ListenAndServe()
+}
+
+// registerUtilityEndpoints registers endpoints for health check, metrics, etc.
+func (s *Server) registerUtilityEndpoints() {
+	// Register health check endpoint
+	s.router.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(map[string]string{
+			"status": "up",
+			"time":   time.Now().Format(time.RFC3339),
+		})
+	}).Methods("GET")
+
+	// Register metrics endpoint if enabled
 	if s.config.Metrics.Enabled {
-		handler = s.metricsMiddleware.Metrics(handler)
-		handler = s.metricsMiddleware.RegisterMetricsEndpoint(handler)
+		s.router.Handle(s.config.Metrics.Endpoint, promhttp.Handler())
 	}
 
-	// Register cache purge endpoint if enabled
-	if s.config.Cache.Enabled {
-		handler = s.cacheMiddleware.RegisterPurgeEndpoint(handler)
-	}
+	// Register Swagger documentation
+	s.router.PathPrefix("/docs/swagger/").Handler(http.StripPrefix("/docs/swagger/", http.FileServer(http.Dir("./docs/swagger"))))
+	s.log.Info("Registered Swagger documentation endpoint",
+		logger.String("path", "/docs/swagger/"),
+	)
 
-	// Set the final handler
-	s.httpServer.Handler = handler
+	// Register test endpoint for client IP detection and token validation
+	s.router.HandleFunc("/test-ip", func(w http.ResponseWriter, r *http.Request) {
+		clientIP := util.GetClientIP(r)
+		country := util.GetGeoLocation(clientIP, s.log)
 
-	// Start HTTP server
-	s.log.Info("Starting server", logger.String("address", s.config.Server.Address))
-	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		s.log.Error("Failed to start server", logger.Error(err))
-		return err
-	}
+		// Extract tokens from various sources
+		authHeader := r.Header.Get("Authorization")
+		apiKeyHeader := r.Header.Get("x-api-key")
+		tokenQuery := r.URL.Query().Get("token")
+		apiKeyQuery := r.URL.Query().Get("api_key")
+		if apiKeyQuery == "" {
+			apiKeyQuery = r.URL.Query().Get("key")
+		}
 
-	return nil
+		// Format response
+		w.Header().Set("Content-Type", "application/json")
+		jsonResponse := map[string]interface{}{
+			"client_ip":   clientIP,
+			"remote_addr": r.RemoteAddr,
+			"country":     country,
+			"headers": map[string]string{
+				"x-forwarded-for": r.Header.Get("X-Forwarded-For"),
+				"x-real-ip":       r.Header.Get("X-Real-IP"),
+				"authorization":   authHeader,
+				"x-api-key":       apiKeyHeader,
+			},
+			"query_parameters": map[string]string{
+				"token":   tokenQuery,
+				"api_key": apiKeyQuery,
+			},
+			"time": time.Now().Format(time.RFC3339),
+		}
+
+		// Add auth-specific data
+		if authHeader != "" || tokenQuery != "" {
+			jsonResponse["auth_method"] = "jwt"
+		} else if apiKeyHeader != "" || apiKeyQuery != "" {
+			jsonResponse["auth_method"] = "api_key"
+		} else {
+			jsonResponse["auth_method"] = "none"
+		}
+
+		json.NewEncoder(w).Encode(jsonResponse)
+
+		s.log.Info("Received request to /test-ip",
+			logger.String("client_ip", clientIP),
+			logger.String("country", country),
+			logger.String("remote_addr", r.RemoteAddr),
+		)
+	}).Methods("GET")
 }
 
 // Stop gracefully stops the server

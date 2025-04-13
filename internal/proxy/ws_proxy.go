@@ -46,6 +46,15 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 			return
 		}
 
+		// Log WebSocket connection request
+		p.log.Debug("Received WebSocket connection request",
+			logger.String("path", r.URL.Path),
+			logger.String("query", r.URL.RawQuery),
+			logger.String("remote_addr", r.RemoteAddr),
+			logger.String("x-forwarded-for", r.Header.Get("X-Forwarded-For")),
+			logger.String("x-real-ip", r.Header.Get("X-Real-IP")),
+		)
+
 		// Parse the upstream URL
 		upstreamURL, err := url.Parse(route.Upstream)
 		if err != nil {
@@ -156,6 +165,14 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 		headers.Set("X-Forwarded-Host", r.Host)
 		headers.Set("X-Gateway-Proxy", "true")
 
+		// Check for token in URL query parameters and add it to the headers if present
+		// This ensures backward compatibility with clients that send tokens in URL
+		token := r.URL.Query().Get("token")
+		if token != "" && headers.Get("Authorization") == "" {
+			headers.Set("Authorization", "Bearer "+token)
+			p.log.Debug("Added token from URL query to Authorization header")
+		}
+
 		// Connect to upstream WebSocket
 		p.log.Debug("Connecting to upstream WebSocket",
 			logger.String("url", wsURL.String()),
@@ -172,6 +189,8 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 		p.log.Debug("WebSocket connection established",
 			logger.String("path", r.URL.Path),
 			logger.String("upstream", wsURL.String()),
+			logger.String("client_ip", clientIP),
+			logger.String("country", country),
 		)
 
 		// Bidirectional copy

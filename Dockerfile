@@ -37,6 +37,11 @@ RUN apk add --no-cache curl unzip && \
 
 # Copy executable from builder stage
 COPY --from=builder /app/apigateway /app/apigateway
+COPY --from=builder /etc/passwd /etc/passwd
+
+# Copy configuration files and Swagger documentation
+COPY configs /app/configs
+COPY docs/swagger /app/docs/swagger
 
 # Create a non-root user and group
 RUN addgroup -S appgroup && adduser -S appuser -G appgroup

@@ -131,6 +131,24 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 					logger.String("ip", clientIP))
 			}
 
+			// Check for token in URL query parameters and add it to the headers if present
+			// This ensures backward compatibility with clients that send tokens in URL
+			token := req.URL.Query().Get("token")
+			if token != "" && req.Header.Get("Authorization") == "" {
+				req.Header.Set("Authorization", "Bearer "+token)
+				p.log.Debug("Added token from URL query to Authorization header")
+			}
+
+			// Check for API key in query parameters
+			apiKey := req.URL.Query().Get("api_key")
+			if apiKey == "" {
+				apiKey = req.URL.Query().Get("key")
+			}
+			if apiKey != "" && req.Header.Get("x-api-key") == "" {
+				req.Header.Set("x-api-key", apiKey)
+				p.log.Debug("Added API key from URL query to x-api-key header")
+			}
+
 			req.Header.Set("X-Forwarded-Host", req.Host)
 			req.Header.Set("X-Forwarded-Proto", req.URL.Scheme)
 			req.Header.Set("X-Gateway-Proxy", "true")
