@@ -1,7 +1,7 @@
 routes:
   - path: "/scanjobmanager"
     upstream: "http://scanjobmanager:8001"
-    methods: ["GET", "POST", "PUT", "DELETE"]
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     strip_prefix: false
     require_auth: true
     timeout: 120

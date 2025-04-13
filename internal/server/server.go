@@ -36,6 +36,7 @@ type Server struct {
 	urlRewriter       *middleware.URLRewriter
 	retryMiddleware   *middleware.RetryMiddleware
 	metricsMiddleware *middleware.MetricsMiddleware
+	corsMiddleware    *middleware.CORSMiddleware
 }
 
 // NewServer creates a new server instance
@@ -56,6 +57,19 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 	retryMiddleware := middleware.NewRetryMiddleware(log)
 	metricsMiddleware := middleware.NewMetricsMiddleware(&cfg.Metrics, log)
 
+	// Convert CorsConfig to CORSConfig
+	corsConfig := &config.CORSConfig{
+		Enabled:          cfg.Cors.Enabled,
+		AllowAllOrigins:  cfg.Cors.AllowAllOrigins,
+		AllowedOrigins:   cfg.Cors.AllowedOrigins,
+		AllowedMethods:   cfg.Cors.AllowedMethods,
+		AllowedHeaders:   cfg.Cors.AllowedHeaders,
+		ExposedHeaders:   cfg.Cors.ExposedHeaders,
+		AllowCredentials: cfg.Cors.AllowCredentials,
+		MaxAge:           cfg.Cors.MaxAge,
+	}
+	corsMiddleware := middleware.NewCORSMiddleware(corsConfig, log)
+
 	// Setup rate limiters for routes with rate limiting enabled
 	for _, route := range routes.Routes {
 		if route.RateLimit != nil && route.RateLimit.Requests > 0 {
@@ -70,6 +84,13 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 		ReadTimeout:  time.Duration(cfg.Server.ReadTimeout) * time.Second,
 		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
 		IdleTimeout:  120 * time.Second,
+	}
+
+	// Apply global middleware
+	// CORS middleware should be first in the chain
+	if cfg.Cors.Enabled {
+		router.Use(corsMiddleware.CORS)
+		log.Info("Applied CORS middleware globally")
 	}
 
 	return &Server{
@@ -88,6 +109,7 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 		urlRewriter:       urlRewriter,
 		retryMiddleware:   retryMiddleware,
 		metricsMiddleware: metricsMiddleware,
+		corsMiddleware:    corsMiddleware,
 	}
 }
 
