@@ -1,11 +1,12 @@
 module api-gateway
 
-go 1.19
+go 1.21
 
 require (
 	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
+	github.com/ip2location/ip2location-go/v9 v9.7.1
 	github.com/prometheus/client_golang v1.16.0
 	github.com/stretchr/testify v1.10.0
 	go.opentelemetry.io/otel v1.16.0
@@ -33,6 +34,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.16.0 // indirect
 	go.uber.org/atomic v1.10.0 // indirect
 	go.uber.org/multierr v1.9.0 // indirect
-	golang.org/x/sys v0.10.0 // indirect
+	golang.org/x/sys v0.20.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
+	lukechampine.com/uint128 v1.2.0 // indirect
 )

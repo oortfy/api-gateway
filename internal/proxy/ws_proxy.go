@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"api-gateway/internal/config"
+	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
 
 	"github.com/gorilla/websocket"
@@ -44,6 +45,15 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 			http.Error(w, "WebSocket not enabled for this route", http.StatusBadRequest)
 			return
 		}
+
+		// Log WebSocket connection request
+		p.log.Debug("Received WebSocket connection request",
+			logger.String("path", r.URL.Path),
+			logger.String("query", r.URL.RawQuery),
+			logger.String("remote_addr", r.RemoteAddr),
+			logger.String("x-forwarded-for", r.Header.Get("X-Forwarded-For")),
+			logger.String("x-real-ip", r.Header.Get("X-Real-IP")),
+		)
 
 		// Parse the upstream URL
 		upstreamURL, err := url.Parse(route.Upstream)
@@ -110,10 +120,58 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 		headers.Set("Host", upstreamURL.Host)
 		headers.Set("Origin", fmt.Sprintf("%s://%s", upstreamURL.Scheme, upstreamURL.Host))
 
-		// Add custom headers
-		headers.Set("X-Forwarded-For", r.RemoteAddr)
+		// Extract the real client IP
+		clientIP := util.GetClientIP(r)
+		p.log.Debug("Extracted client IP for WebSocket proxy",
+			logger.String("remote_addr", r.RemoteAddr),
+			logger.String("client_ip", clientIP),
+			logger.String("xff_header", r.Header.Get("X-Forwarded-For")),
+			logger.String("xrip_header", r.Header.Get("X-Real-IP")),
+		)
+
+		// Add custom headers to preserve client IP information
+		if clientIP != "" {
+			// For X-Forwarded-For, handle existing chains properly
+			if xffHeader := r.Header.Get("X-Forwarded-For"); xffHeader != "" {
+				// Keep existing chain but only if clientIP is not already there
+				// to avoid duplicating the client IP
+				if !strings.HasPrefix(xffHeader, clientIP+",") && xffHeader != clientIP {
+					headers.Set("X-Forwarded-For", xffHeader)
+					p.log.Debug("Preserved X-Forwarded-For header", logger.String("value", xffHeader))
+				}
+			} else {
+				// No existing chain, just set the client IP
+				headers.Set("X-Forwarded-For", clientIP)
+				p.log.Debug("Set X-Forwarded-For header", logger.String("value", clientIP))
+			}
+
+			// Always set X-Real-IP to the original client IP
+			headers.Set("X-Real-IP", clientIP)
+			p.log.Debug("Set X-Real-IP header", logger.String("value", clientIP))
+		}
+
+		// Try to resolve country from IP if possible
+		country := util.GetGeoLocation(clientIP, p.log)
+		if country != "" {
+			headers.Set("X-Client-Geo-Country", country)
+			p.log.Debug("Set X-Client-Geo-Country header",
+				logger.String("ip", clientIP),
+				logger.String("country", country))
+		} else {
+			p.log.Debug("No country information available for IP",
+				logger.String("ip", clientIP))
+		}
+
 		headers.Set("X-Forwarded-Host", r.Host)
 		headers.Set("X-Gateway-Proxy", "true")
+
+		// Check for token in URL query parameters and add it to the headers if present
+		// This ensures backward compatibility with clients that send tokens in URL
+		token := r.URL.Query().Get("token")
+		if token != "" && headers.Get("Authorization") == "" {
+			headers.Set("Authorization", "Bearer "+token)
+			p.log.Debug("Added token from URL query to Authorization header")
+		}
 
 		// Connect to upstream WebSocket
 		p.log.Debug("Connecting to upstream WebSocket",
@@ -131,6 +189,8 @@ func (p *WSProxy) ProxyWebSocket(route config.Route) http.Handler {
 		p.log.Debug("WebSocket connection established",
 			logger.String("path", r.URL.Path),
 			logger.String("upstream", wsURL.String()),
+			logger.String("client_ip", clientIP),
+			logger.String("country", country),
 		)
 
 		// Bidirectional copy

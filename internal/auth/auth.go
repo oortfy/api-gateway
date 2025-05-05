@@ -59,8 +59,30 @@ func NewAuthService(config *config.AuthConfig, log logger.Logger) *AuthService {
 // ValidateToken validates the provided authentication token
 // It first tries to validate as a JWT token, if that fails, it tries as an API token
 func (a *AuthService) ValidateToken(r *http.Request, allowedRoles []string) (bool, error) {
+	var jwtToken, apiToken string
+
+	// First look in headers
+	jwtToken = a.extractJWTToken(r)
+	apiToken = a.extractAPIToken(r)
+
+	// If not found in headers, try query parameters
+	if jwtToken == "" {
+		jwtToken = a.extractJWTTokenFromQuery(r)
+		a.log.Debug("Extracted JWT token from query parameters",
+			logger.String("path", r.URL.Path),
+			logger.Bool("token_found", jwtToken != ""),
+		)
+	}
+
+	if apiToken == "" {
+		apiToken = a.extractAPITokenFromQuery(r)
+		a.log.Debug("Extracted API token from query parameters",
+			logger.String("path", r.URL.Path),
+			logger.Bool("token_found", apiToken != ""),
+		)
+	}
+
 	// Try JWT validation first
-	jwtToken := a.extractJWTToken(r)
 	if jwtToken != "" {
 		valid, _, err := a.validateJWT(jwtToken)
 		if err == nil && valid {
@@ -76,7 +98,6 @@ func (a *AuthService) ValidateToken(r *http.Request, allowedRoles []string) (boo
 	}
 
 	// Try API token validation next
-	apiToken := a.extractAPIToken(r)
 	if apiToken != "" {
 		valid, _, err := a.validateAPIToken(apiToken)
 		if err != nil {
@@ -113,9 +134,33 @@ func (a *AuthService) extractJWTToken(r *http.Request) string {
 	return parts[1]
 }
 
+// extractJWTTokenFromQuery extracts JWT token from the URL query parameters
+func (a *AuthService) extractJWTTokenFromQuery(r *http.Request) string {
+	// Check for token parameter
+	token := r.URL.Query().Get("token")
+	if token != "" {
+		return token
+	}
+
+	// Also check for access_token parameter (OAuth 2.0 standard)
+	return r.URL.Query().Get("access_token")
+}
+
 // extractAPIToken extracts API token from the header
 func (a *AuthService) extractAPIToken(r *http.Request) string {
 	return r.Header.Get(a.config.APIKeyHeader)
+}
+
+// extractAPITokenFromQuery extracts API token from the URL query parameters
+func (a *AuthService) extractAPITokenFromQuery(r *http.Request) string {
+	// Check for api_key parameter
+	apiKey := r.URL.Query().Get("api_key")
+	if apiKey != "" {
+		return apiKey
+	}
+
+	// Also check for key parameter (common alternative)
+	return r.URL.Query().Get("key")
 }
 
 // validateJWT validates a JWT token and returns the associated role
