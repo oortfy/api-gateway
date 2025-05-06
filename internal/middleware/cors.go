@@ -46,50 +46,95 @@ func (c *CORSMiddleware) CORS(next http.Handler) http.Handler {
 			return
 		}
 
-		// Set allowed origin
-		useWildcard := c.config.AllowAllOrigins ||
-			(len(c.config.AllowedOrigins) == 1 && c.config.AllowedOrigins[0] == "*" &&
-				!c.config.AllowCredentials)
-
-		if useWildcard {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-		} else {
-			w.Header().Set("Access-Control-Allow-Origin", origin)
-			w.Header().Set("Vary", "Origin")
-		}
-
-		// Set other CORS headers
-		if c.config.AllowCredentials {
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-		}
-
-		if len(c.config.ExposedHeaders) > 0 {
-			w.Header().Set("Access-Control-Expose-Headers", strings.Join(c.config.ExposedHeaders, ","))
+		// Create a wrapper for the response writer to capture and modify headers
+		wrapper := &corsResponseWriter{
+			ResponseWriter: w,
+			config:         c.config,
+			origin:         origin,
+			log:            c.log,
 		}
 
 		// Handle preflight requests
 		if r.Method == http.MethodOptions {
 			requestMethod := r.Header.Get("Access-Control-Request-Method")
 			if requestMethod != "" {
-				// Set preflight headers
-				w.Header().Set("Access-Control-Allow-Methods", strings.Join(c.config.AllowedMethods, ","))
-				w.Header().Set("Access-Control-Allow-Headers", strings.Join(c.config.AllowedHeaders, ","))
-				w.Header().Set("Access-Control-Max-Age", strconv.Itoa(c.config.MaxAge))
-
-				c.log.Info("CORS preflight request processed",
-					logger.String("origin", origin),
-					logger.String("method", requestMethod),
-				)
-
-				// Preflight request completed, no need to call the next handler
-				w.WriteHeader(http.StatusOK)
+				// Process preflight request
+				wrapper.handlePreflight(requestMethod)
 				return
 			}
 		}
 
-		// Continue with the request
-		next.ServeHTTP(w, r)
+		// Continue with the request using our wrapper
+		next.ServeHTTP(wrapper, r)
 	})
+}
+
+// corsResponseWriter wraps http.ResponseWriter to handle CORS headers
+type corsResponseWriter struct {
+	http.ResponseWriter
+	config *config.CORSConfig
+	origin string
+	log    logger.Logger
+}
+
+// handlePreflight processes OPTIONS preflight requests
+func (w *corsResponseWriter) handlePreflight(requestMethod string) {
+	// Set CORS headers for preflight
+	w.setCORSHeaders()
+
+	// Set method-specific preflight headers
+	w.Header().Set("Access-Control-Allow-Methods", strings.Join(w.config.AllowedMethods, ","))
+	w.Header().Set("Access-Control-Allow-Headers", strings.Join(w.config.AllowedHeaders, ","))
+	w.Header().Set("Access-Control-Max-Age", strconv.Itoa(w.config.MaxAge))
+
+	w.log.Info("CORS preflight request processed",
+		logger.String("origin", w.origin),
+		logger.String("method", requestMethod),
+	)
+
+	// Preflight request completed
+	w.WriteHeader(http.StatusOK)
+}
+
+// WriteHeader overrides the original WriteHeader to ensure CORS headers are set first
+func (w *corsResponseWriter) WriteHeader(statusCode int) {
+	w.setCORSHeaders()
+	w.ResponseWriter.WriteHeader(statusCode)
+}
+
+// Write overrides the original Write to ensure CORS headers are set
+func (w *corsResponseWriter) Write(b []byte) (int, error) {
+	w.setCORSHeaders()
+	return w.ResponseWriter.Write(b)
+}
+
+// setCORSHeaders sets the CORS headers if they aren't already set
+func (w *corsResponseWriter) setCORSHeaders() {
+	// If the Access-Control-Allow-Origin header is already set, don't override it
+	if w.Header().Get("Access-Control-Allow-Origin") != "" {
+		return
+	}
+
+	// Set allowed origin
+	useWildcard := w.config.AllowAllOrigins ||
+		(len(w.config.AllowedOrigins) == 1 && w.config.AllowedOrigins[0] == "*" &&
+			!w.config.AllowCredentials)
+
+	if useWildcard {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	} else {
+		w.Header().Set("Access-Control-Allow-Origin", w.origin)
+		w.Header().Set("Vary", "Origin")
+	}
+
+	// Set other CORS headers
+	if w.config.AllowCredentials {
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+
+	if len(w.config.ExposedHeaders) > 0 {
+		w.Header().Set("Access-Control-Expose-Headers", strings.Join(w.config.ExposedHeaders, ","))
+	}
 }
 
 // isOriginAllowed checks if the origin is allowed
