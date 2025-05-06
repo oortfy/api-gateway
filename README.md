@@ -232,8 +232,9 @@ routes:
   - path: "/api/v1/orders"
     upstream: "http://order-service:8080"
     protocol: HTTP
-    require_auth: true
-    auth_type: "jwt"
+    middlewares:
+      require_auth: true
+      auth_type: "jwt"
 ```
 
 ### With Rate Limiting
@@ -242,9 +243,10 @@ routes:
   - path: "/api/v1/search"
     upstream: "http://search-service:8080"
     protocol: HTTP
-    rate_limit:
-      requests: 100
-      period: "minute"
+    middlewares:
+      rate_limit:
+        requests: 100
+        period: "minute"
 ```
 
 ### WebSocket Support

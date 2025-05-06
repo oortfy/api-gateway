@@ -152,7 +152,7 @@ func (rl *RateLimiter) getClientIP(r *http.Request) string {
 func (rl *RateLimiter) RateLimit(next http.Handler, route config.Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip rate limiting if not configured for this route
-		if route.RateLimit == nil || route.RateLimit.Requests == 0 {
+		if route.Middlewares.RateLimit == nil || route.Middlewares.RateLimit.Requests == 0 {
 			next.ServeHTTP(w, r)
 			return
 		}
