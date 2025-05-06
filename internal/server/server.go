@@ -236,7 +236,12 @@ func (s *Server) registerRoute(route config.Route) {
 	}
 
 	// Register the appropriate handlers based on whether it's a WebSocket route or not
-	if route.WebSocket != nil && route.WebSocket.Enabled {
+	switch route.Protocol {
+	case "SOCKET":
+		if route.WebSocket == nil && route.WebSocket.Enabled == false {
+			return
+		}
+
 		// WebSocket handler
 		wsHandler := s.wsProxy.ProxyWebSocket(route)
 
@@ -267,7 +272,7 @@ func (s *Server) registerRoute(route config.Route) {
 				logger.String("upstream", route.Upstream),
 			)
 		}
-	} else {
+	case "HTTP":
 		// HTTP handler
 		httpHandler := s.httpProxy.ProxyRequest(route)
 

@@ -2,6 +2,7 @@ routes:
   - path: "/scanjobmanager/*"
     upstream: "http://localhost:8001"
     methods: ["GET", "POST", "PUT", "DELETE"]
+    protocol: HTTP
     load_balancing:
       method: "round_robin"
       health_check: true
@@ -15,6 +16,7 @@ routes:
         
   - path: "/api/users/*"
     methods: ["GET", "POST", "PUT", "DELETE"]
+    protocol: HTTP
     upstream: "http://user-service:8082"
     strip_prefix: true
     require_auth: true
@@ -30,6 +32,7 @@ routes:
 
   - path: "/api/products/*"
     methods: ["GET", "POST", "PUT", "DELETE"]
+    protocol: HTTP
     upstream: "http://product-service:8083"
     strip_prefix: true
     require_auth: true
@@ -46,6 +49,7 @@ routes:
 
   - path: "/api/orders/*"
     methods: ["GET", "POST", "PUT", "DELETE"]
+    protocol: HTTP
     upstream: "http://order-service:8084"
     strip_prefix: true
     require_auth: true
@@ -63,6 +67,7 @@ routes:
 
   - path: "/api/public/*"
     methods: ["GET"]
+    protocol: HTTP
     upstream: "http://public-service:8085"
     strip_prefix: true
     require_auth: false
@@ -77,6 +82,7 @@ routes:
 
   - path: "/api/search/*"
     methods: ["GET"]
+    protocol: HTTP
     upstream: "http://search-service:8087"
     strip_prefix: true
     require_auth: false
@@ -91,6 +97,7 @@ routes:
 
   - path: "/api/legacy/*"
     methods: ["GET", "POST"]
+    protocol: HTTP
     upstream: "http://legacy-service:8088"
     strip_prefix: true
     require_auth: true
@@ -108,6 +115,7 @@ routes:
 
   - path: "/api/metrics/*"
     methods: ["GET"]
+    protocol: HTTP
     upstream: "http://metrics-service:8089"
     strip_prefix: true
     require_auth: true
@@ -118,6 +126,7 @@ routes:
 
   - path: "/scanjobmanager/*"
     methods: ["GET", "POST", "PUT", "DELETE"]
+    protocol: HTTP
     upstream: "http://localhost:8001"
     strip_prefix: false
     require_auth: true
@@ -133,6 +142,7 @@ routes:
 
   - path: "/ws/*"
     upstream: "http://websocket-service:8086"
+    protocol: SOCKET
     strip_prefix: false
     require_auth: true
     timeout: 60
@@ -149,6 +159,7 @@ routes:
   - path: "/health"
     methods: ["GET"]
     upstream: "http://localhost:8080"
+    protocol: HTTP
     strip_prefix: false
     require_auth: false
     timeout: 5

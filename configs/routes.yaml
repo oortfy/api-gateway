@@ -2,6 +2,7 @@ routes:
   - path: "/scanjobmanager/*"
     upstream: "http://scanjobmanager:8001"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    protocol: HTTP
     strip_prefix: false
     require_auth: true
     timeout: 120
@@ -25,6 +26,7 @@ routes:
   - path: "/project"
     upstream: "http://host.docker.internal:8002"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    protocol: HTTP
     strip_prefix: false
     require_auth: true
     timeout: 120
