@@ -17,6 +17,7 @@ type Route struct {
 	Path            string                  `yaml:"path"`
 	Methods         []string                `yaml:"methods"`
 	Upstream        string                  `yaml:"upstream"`
+	Protocol        string                  `yaml:"protocol"`
 	StripPrefix     bool                    `yaml:"strip_prefix"`
 	RequireAuth     bool                    `yaml:"require_auth"`
 	Timeout         int                     `yaml:"timeout"`
