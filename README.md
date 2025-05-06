@@ -76,15 +76,7 @@ make build
 1. Configure your routes in `configs/routes.yaml`:
 ```yaml
 routes:
-  - path: "/users/*"
-    methods: ["GET", "POST"]
-    upstream: "http://user-service:8080"
-    strip_prefix: true
-    require_auth: true
-    rate_limit:
-      requests: 100
-      period: "minute"
-  - path: "/manager/user"
+  - path: "/users"
     methods: ["GET", "POST"]
     upstream: "http://user-service:8080"
     strip_prefix: true
