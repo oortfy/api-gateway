@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"api-gateway/internal/auth"
@@ -12,7 +13,6 @@ import (
 	"api-gateway/internal/middleware"
 	"api-gateway/internal/proxy"
 	"api-gateway/pkg/logger"
-
 	"github.com/gorilla/mux"
 )
 
@@ -143,7 +143,11 @@ func (s *Server) registerRoutes() {
 // registerRoute configures an individual route
 func (s *Server) registerRoute(route config.Route) {
 	// Create a new router for this route
-	routeRouter := s.router.PathPrefix(route.Path).Subrouter()
+	var routeRouter *mux.Router
+	if strings.HasSuffix(route.Path, "/*") {
+		route.Path = strings.TrimRight(route.Path, "/*")
+		routeRouter = s.router.PathPrefix(route.Path).Subrouter()
+	}
 
 	// Register the appropriate handlers based on whether it's a WebSocket route or not
 	if route.WebSocket != nil && route.WebSocket.Enabled {
@@ -158,8 +162,13 @@ func (s *Server) registerRoute(route config.Route) {
 		// Register the handler for the WebSocket-specific path or the general route path
 		wsPath := route.WebSocket.Path
 		if wsPath == "" {
-			// If no specific path is provided, use the general path
-			routeRouter.PathPrefix("/").Handler(wsHandler)
+			if routeRouter == nil {
+				routeRouter = s.router
+				routeRouter.PathPrefix("/").Path(route.Path).Handler(wsHandler)
+			} else {
+				// If no specific path is provided, use the general path
+				routeRouter.PathPrefix("/").Handler(wsHandler)
+			}
 			s.log.Info("Registered WebSocket route",
 				logger.String("path", fmt.Sprintf("%s/*", route.Path)),
 				logger.String("upstream", route.Upstream),
@@ -231,7 +240,12 @@ func (s *Server) registerRoute(route config.Route) {
 		// If methods are specified, register the handler for each method
 		if len(route.Methods) > 0 {
 			for _, method := range route.Methods {
-				routeRouter.PathPrefix("/").Handler(httpHandler).Methods(method)
+				if routeRouter == nil {
+					routeRouter = s.router
+					routeRouter.PathPrefix("/").Path(route.Path).Handler(httpHandler).Methods(method)
+				} else {
+					routeRouter.PathPrefix("/").Handler(httpHandler).Methods(method)
+				}
 				s.log.Info("Registered route",
 					logger.String("path", fmt.Sprintf("%s/*", route.Path)),
 					logger.String("method", method),
@@ -239,8 +253,13 @@ func (s *Server) registerRoute(route config.Route) {
 				)
 			}
 		} else {
-			// Otherwise, register for all methods
-			routeRouter.PathPrefix("/").Handler(httpHandler)
+			if routeRouter == nil {
+				routeRouter = s.router
+				routeRouter.PathPrefix("/").Path(route.Path).Handler(httpHandler)
+			} else {
+				// Otherwise, register for all methods
+				routeRouter.PathPrefix("/").Handler(httpHandler)
+			}
 			s.log.Info("Registered route",
 				logger.String("path", fmt.Sprintf("%s/*", route.Path)),
 				logger.String("method", "ALL"),
