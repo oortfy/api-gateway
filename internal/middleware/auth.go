@@ -37,7 +37,7 @@ func safeError(w http.ResponseWriter, msg string, statusCode int) {
 func (m *AuthMiddleware) Authenticate(next http.Handler, route config.Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip authentication if not required for this route
-		if !route.Middlewares.RequireAuth {
+		if !route.RequireAuth {
 			next.ServeHTTP(w, r)
 			return
 		}
