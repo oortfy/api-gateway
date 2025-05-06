@@ -15,6 +15,7 @@ import (
 	"api-gateway/internal/proxy"
 	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
+	"api-gateway/internal/swagger"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -115,6 +116,14 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 
 // Start initializes and starts the server
 func (s *Server) Start() error {
+	// Generate Swagger documentation
+	if err := swagger.WriteSwaggerFile(s.routes, "docs/swagger/swagger.yaml"); err != nil {
+		s.log.Error("Failed to generate Swagger documentation", logger.Error(err))
+		// Don't return error, continue server startup
+	} else {
+		s.log.Info("Generated Swagger documentation", logger.String("path", "docs/swagger/swagger.yaml"))
+	}
+
 	// Register routes
 	for _, route := range s.routes.Routes {
 		s.registerRoute(route)
