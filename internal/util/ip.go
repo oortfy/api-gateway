@@ -17,6 +17,7 @@ var (
 	ip2db      *ip2location.DB
 	ip2dbOnce  sync.Once
 	ip2dbError error
+	ip2dbEnabled bool
 )
 
 // GetClientIP properly extracts the real client IP from the request,
@@ -100,7 +101,8 @@ func GetGeoLocation(ipStr string, log logger.Logger) string {
 		dbPath := findIP2LocationDatabase(log)
 		if dbPath == "" {
 			ip2dbError = fmt.Errorf("IP2Location database not found")
-			log.Error("IP2Location database not found in any location", logger.Error(ip2dbError))
+			log.Warn("IP2Location database not found. Geolocation features will be disabled.")
+			ip2dbEnabled = false
 			return
 		}
 
@@ -110,9 +112,10 @@ func GetGeoLocation(ipStr string, log logger.Logger) string {
 		file, err := os.Open(dbPath)
 		if err != nil {
 			ip2dbError = fmt.Errorf("cannot open IP2Location database: %w", err)
-			log.Error("Cannot open IP2Location database file",
+			log.Warn("Cannot open IP2Location database file. Geolocation features will be disabled.",
 				logger.String("path", dbPath),
 				logger.Error(err))
+			ip2dbEnabled = false
 			return
 		}
 		file.Close()
@@ -121,18 +124,19 @@ func GetGeoLocation(ipStr string, log logger.Logger) string {
 		ip2db, err = ip2location.OpenDB(dbPath)
 		if err != nil {
 			ip2dbError = err
-			log.Error("Failed to open IP2Location database",
+			log.Warn("Failed to open IP2Location database. Geolocation features will be disabled.",
 				logger.String("path", dbPath),
 				logger.Error(err))
+			ip2dbEnabled = false
 		} else {
 			log.Info("Successfully loaded IP2Location database",
 				logger.String("path", dbPath))
+			ip2dbEnabled = true
 		}
 	})
 
-	if ip2db == nil || ip2dbError != nil {
-		log.Debug("IP2Location database not available",
-			logger.Error(ip2dbError))
+	// If IP2Location is not enabled, return empty string without error
+	if !ip2dbEnabled {
 		return ""
 	}
 
