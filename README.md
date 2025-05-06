@@ -45,6 +45,8 @@ A high-performance, feature-rich API Gateway built in Go, designed for microserv
 - [Development](#development)
 - [Contributing](#contributing)
 - [License](#license)
+- [Client IP Forwarding and Geolocation](#client-ip-forwarding-and-geolocation)
+- [API Documentation](#api-documentation)
 
 ## 🚀 Quick Start
 
@@ -259,6 +261,33 @@ curl -H "x-api-key: your-api-key" http://localhost:8080/api/v1/users
 curl -H "Authorization: Bearer your.jwt.token" http://localhost:8080/api/v1/users
 ```
 
+### Query Parameter Authentication
+
+For clients that cannot set custom headers, both API key and JWT token authentication can be provided via URL query parameters:
+
+```bash
+# JWT Authentication via query parameter
+curl "http://localhost:8080/api/v1/users?token=your.jwt.token"
+
+# API Key Authentication via query parameter
+curl "http://localhost:8080/api/v1/users?api_key=your-api-key"
+```
+
+### WebSocket Authentication
+
+WebSocket connections can be authenticated using the same methods as HTTP requests:
+
+```javascript
+// WebSocket with JWT in header (preferred in browser environments)
+const socket = new WebSocket('ws://localhost:8080/ws');
+socket.setRequestHeader('Authorization', 'Bearer your.jwt.token');
+
+// WebSocket with token in URL (for environments that don't support custom headers)
+const socket = new WebSocket('ws://localhost:8080/ws?token=your.jwt.token');
+```
+
+Secure WebSocket connections (wss://) are also supported and recommended for production environments.
+
 ## 🚦 Traffic Management
 
 ### Rate Limiting
@@ -337,4 +366,136 @@ Key points:
 - ✅ You can modify the code
 - ✅ You must share modifications back to this project
 - ❌ You cannot sell this software as a standalone product
-- ❌ You cannot distribute closed source versions 
+- ❌ You cannot distribute closed source versions
+
+## Client IP Forwarding and Geolocation
+
+The API Gateway properly detects and forwards the client's real IP address to backend services using standard headers:
+
+- `X-Forwarded-For`: Contains the entire client IP chain, preserving upstream proxy information
+- `X-Real-IP`: Contains only the original client IP address
+- `X-Client-Geo-Country`: Contains the client's country code (ISO format, e.g., US, GB, DE)
+
+For WebSocket connections, the same headers are automatically applied to ensure consistent behavior across HTTP and WebSocket routes.
+
+### IP Detection Priority
+
+The API Gateway uses the following priority order to determine the client's real IP address:
+
+1. `X-Real-IP` header (typically set by Nginx or other reverse proxies)
+2. First IP in the `X-Forwarded-For` header chain
+3. `CF-Connecting-IP` header (when behind Cloudflare)
+4. `True-Client-IP` header (used by some CDNs)
+5. The `RemoteAddr` from the request (fallback)
+
+This ensures the most accurate client IP detection even when running behind multiple proxy layers.
+
+### Nginx Configuration
+
+When running the API Gateway behind Nginx, use this configuration to ensure proper client IP forwarding:
+
+```nginx
+server {
+    # Server config...
+    
+    location / {
+        proxy_pass http://api-gateway:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        
+        # For WebSockets
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+### IP2Location Integration
+
+The API Gateway uses the free and open-source IP2Location LITE database to provide country-level geolocation information for client IP addresses.
+
+The IP2Location LITE database is included automatically in the Docker image. If you're running the gateway outside of Docker, you can download the database from:
+
+1. Download the free IP2Location LITE DB1 database from [IP2Location LITE](https://lite.ip2location.com/database/ip-country) (free registration required)
+2. Place the `IP2LOCATION-LITE-DB1.BIN` file in one of the following locations:
+   - `./configs/IP2LOCATION-LITE-DB1.BIN` (relative to the API Gateway binary)
+   - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
+   - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
+   - Or specify a custom path using the `IP2LOCATION_DB_PATH` environment variable
+
+If the IP2Location database is not found, the API Gateway will still function normally, but country information will not be included in requests.
+
+### Testing IP Detection and Geolocation
+
+You can test the API Gateway's IP detection and geolocation using the built-in test endpoint:
+
+```bash
+# Test with default client IP
+curl http://localhost:8080/test-ip | jq
+
+# Test with simulated IP address
+curl -H "X-Real-IP: 8.8.8.8" http://localhost:8080/test-ip | jq
+```
+
+The response will include detected client IP, country, and all relevant headers:
+
+```json
+{
+  "client_ip": "8.8.8.8",
+  "remote_addr": "172.17.0.1:51234",
+  "country": "US",
+  "headers": {
+    "x-forwarded-for": "8.8.8.8",
+    "x-real-ip": "8.8.8.8",
+    "authorization": "",
+    "x-api-key": ""
+  },
+  "query_parameters": {
+    "token": "",
+    "api_key": ""
+  },
+  "time": "2024-04-11T10:30:45.123Z",
+  "auth_method": "none"
+}
+```
+
+## API Documentation
+
+The API Gateway includes Swagger/OpenAPI documentation that provides a comprehensive view of its features, endpoints, and authentication mechanisms.
+
+### Accessing the Swagger UI
+
+Once the API Gateway is running, you can access the Swagger UI at:
+
+```
+http://localhost:8080/docs/swagger/
+```
+
+This provides an interactive interface where you can:
+- Explore all available endpoints
+- View request/response schemas
+- Test API endpoints directly
+- Understand authentication requirements
+
+### Documentation Features
+
+The OpenAPI specification documents:
+
+1. **Core Endpoints** - Health checks, metrics, and diagnostics
+2. **Authentication Methods** - JWT, API key, and query parameter authentication
+3. **Proxy Patterns** - How requests are forwarded to backend services
+4. **WebSocket Support** - How WebSocket connections are handled
+5. **Security Requirements** - Authentication options for each endpoint
+
+### Testing with Swagger UI
+
+You can test endpoints directly from the Swagger UI by:
+1. Expanding an endpoint
+2. Clicking "Try it out"
+3. Providing the required parameters and authentication
+4. Clicking "Execute"
+
+For more details about using the Swagger documentation, see the [Swagger README](docs/swagger/README.md).

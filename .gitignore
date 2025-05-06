@@ -4,6 +4,8 @@
 *.dll
 *.so
 *.dylib
+*.zip
+*.bin
 
 # Test binary, built with `go test -c`
 *.test
@@ -43,3 +45,5 @@ logs/
 *.log 
 
 *.html
+*.out
+

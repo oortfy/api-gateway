@@ -44,5 +44,8 @@ Dockerfile
 docker-compose.yml
 
 # Other
-README.md
-LICENSE 
+LICENSE
+
+# Explicitly include these directories
+!docs/
+!docs/swagger/ 

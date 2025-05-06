@@ -1,4 +1,4 @@
-.PHONY: build run test clean docker-build docker-run docker-compose test-unit test-integration test-coverage test-race test-all
+.PHONY: build run test clean docker-build docker-run docker-compose test-unit test-integration test-coverage test-race test-all swagger-validate swagger-serve
 
 # Variables
 APP_NAME=apigateway
@@ -8,6 +8,7 @@ CONFIG_PATH=configs/config.yaml
 ROUTES_PATH=configs/routes.yaml
 COVERAGE_FILE=coverage.out
 COVERAGE_HTML=coverage.html
+SWAGGER_DIR=docs/swagger
 
 # Go commands
 build:
@@ -101,6 +102,16 @@ deps:
 	@go mod download
 	@go mod tidy
 
+# Swagger commands
+swagger-validate:
+	@echo "Validating Swagger file..."
+	@chmod +x $(SWAGGER_DIR)/validate.sh
+	@cd $(SWAGGER_DIR) && ./validate.sh
+
+swagger-serve:
+	@echo "Serving Swagger UI on http://localhost:8090/swagger/"
+	@cd $(SWAGGER_DIR) && python3 -m http.server 8090
+
 help:
 	@echo "Available commands:"
 	@echo "  make build         - Build the application"
@@ -121,4 +132,6 @@ help:
 	@echo "  make fmt           - Format code"
 	@echo "  make vet           - Vet code"
 	@echo "  make lint          - Lint code (requires golangci-lint)"
-	@echo "  make deps          - Download dependencies" 
+	@echo "  make deps          - Download dependencies"
+	@echo "  make swagger-validate - Validate the Swagger documentation"
+	@echo "  make swagger-serve - Serve the Swagger UI on http://localhost:8090/swagger/" 

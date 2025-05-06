@@ -42,6 +42,12 @@ func (m *AuthMiddleware) Authenticate(next http.Handler, route config.Route) htt
 			return
 		}
 
+		// Skip authentication for OPTIONS requests (CORS preflight)
+		if r.Method == http.MethodOptions {
+			next.ServeHTTP(w, r)
+			return
+		}
+
 		// Extract the API key from headers if present
 		apiKey := r.Header.Get("x-api-key")
 		if apiKey != "" {
