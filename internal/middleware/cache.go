@@ -179,7 +179,7 @@ func (c *CacheMiddleware) shouldCache(r *http.Request, route config.Route) bool 
 	}
 
 	// Only cache enabled routes
-	if route.Cache == nil || !route.Cache.Enabled {
+	if route.Middlewares.Cache == nil || !route.Middlewares.Cache.Enabled {
 		return false
 	}
 
@@ -195,7 +195,7 @@ func (c *CacheMiddleware) shouldCache(r *http.Request, route config.Route) bool 
 	}
 
 	// Don't cache authenticated requests unless specified
-	if !route.Cache.CacheAuthenticated && (r.Header.Get("Authorization") != "" || r.Header.Get("x-api-key") != "") {
+	if !route.Middlewares.Cache.CacheAuthenticated && (r.Header.Get("Authorization") != "" || r.Header.Get("x-api-key") != "") {
 		return false
 	}
 
@@ -326,7 +326,7 @@ func (c *CacheMiddleware) serveFromCache(w http.ResponseWriter, entry *CacheEntr
 // getTTL determines the TTL for a cache entry
 func (c *CacheMiddleware) getTTL(r *http.Request, headers http.Header, route config.Route) time.Duration {
 	// Default TTL from route config
-	ttl := time.Duration(route.Cache.TTL) * time.Second
+	ttl := time.Duration(route.Middlewares.Cache.TTL) * time.Second
 
 	// Check for Cache-Control: max-age
 	cacheControl := headers.Get("Cache-Control")

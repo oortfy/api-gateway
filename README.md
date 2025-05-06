@@ -76,9 +76,19 @@ make build
 1. Configure your routes in `configs/routes.yaml`:
 ```yaml
 routes:
-  - path: "/users"
+  - path: "/users/*"
     methods: ["GET", "POST"]
     upstream: "http://user-service:8080"
+    protocol: HTTP
+    strip_prefix: true
+    require_auth: true
+    rate_limit:
+      requests: 100
+      period: "minute"
+  - path: "/manager/user"
+    methods: ["GET", "POST"]
+    upstream: "http://user-service:8080"
+    protocol: HTTP
     strip_prefix: true
     require_auth: true
     rate_limit:
@@ -161,38 +171,39 @@ The API Gateway uses two main configuration files:
 
 ### Route Configuration (routes.yaml)
 
-| Section | Key | Description | Example |
-|---------|-----|-------------|---------|
+| Section | Key | Description                  | Example                    |
+|---------|-----|------------------------------|----------------------------|
 | **Basic Route** |
-| | `path` | Route path pattern | "/api/v1/users" |
-| | `methods` | Allowed HTTP methods | ["GET", "POST"] |
-| | `upstream` | Backend service URL | "http://user-service:8080" |
-| | `strip_prefix` | Remove path prefix | true |
-| | `require_auth` | Require authentication | true |
+| | `path` | Route path pattern           | "/api/v1/users"            |
+| | `methods` | Allowed HTTP methods         | ["GET", "POST"]            |
+| | `upstream` | Backend service URL          | "http://user-service:8080" |
+| | `protocol` | Require Protocol             | HTTP,SOCKET                      |
+| | `strip_prefix` | Remove path prefix           | true                       |
+| | `require_auth` | Require authentication       | true                       |
 | **Load Balancing** |
-| | `method` | Load balancing algorithm | "round_robin" |
-| | `health_check` | Enable health checks | true |
-| | `endpoints` | List of backend endpoints | ["http://service:8080"] |
-| | `health_check_config.path` | Health check endpoint | "/health" |
-| | `health_check_config.interval` | Check interval in seconds | 10 |
+| | `method` | Load balancing algorithm     | "round_robin"              |
+| | `health_check` | Enable health checks         | true                       |
+| | `endpoints` | List of backend endpoints    | ["http://service:8080"]    |
+| | `health_check_config.path` | Health check endpoint        | "/health"                  |
+| | `health_check_config.interval` | Check interval in seconds    | 10                         |
 | **Rate Limiting** |
-| | `requests_per_minute` | Request limit per minute | 1000 |
-| | `burst` | Burst size for rate limiting | 50 |
+| | `requests_per_minute` | Request limit per minute     | 1000                       |
+| | `burst` | Burst size for rate limiting | 50                         |
 | **Circuit Breaker** |
-| | `enabled` | Enable circuit breaker | true |
-| | `threshold` | Error threshold count | 10 |
-| | `timeout` | Reset timeout in seconds | 30 |
-| | `max_concurrent` | Max concurrent requests | 3 |
+| | `enabled` | Enable circuit breaker       | true                       |
+| | `threshold` | Error threshold count        | 10                         |
+| | `timeout` | Reset timeout in seconds     | 30                         |
+| | `max_concurrent` | Max concurrent requests      | 3                          |
 | **Retry Policy** |
-| | `max_attempts` | Maximum retry attempts | 3 |
-| | `initial_interval` | Initial retry interval | 1 |
-| | `max_interval` | Maximum retry interval | 5 |
-| | `multiplier` | Backoff multiplier | 2.0 |
-| | `retry_on_status_codes` | Status codes to retry | [500, 502, 503, 504] |
+| | `max_attempts` | Maximum retry attempts       | 3                          |
+| | `initial_interval` | Initial retry interval       | 1                          |
+| | `max_interval` | Maximum retry interval       | 5                          |
+| | `multiplier` | Backoff multiplier           | 2.0                        |
+| | `retry_on_status_codes` | Status codes to retry        | [500, 502, 503, 504]       |
 | **Caching** |
-| | `enabled` | Enable route caching | true |
-| | `ttl` | Cache TTL in seconds | 300 |
-| | `vary_by_headers` | Headers affecting cache | ["Accept"] |
+| | `enabled` | Enable route caching         | true                       |
+| | `ttl` | Cache TTL in seconds         | 300                        |
+| | `vary_by_headers` | Headers affecting cache      | ["Accept"]                 |
 
 ### Environment Variables
 
@@ -212,6 +223,7 @@ The API Gateway uses two main configuration files:
 routes:
   - path: "/api/v1/users"
     upstream: "http://user-service:8080"
+    protocol: HTTP
 ```
 
 ### With Authentication
@@ -219,8 +231,10 @@ routes:
 routes:
   - path: "/api/v1/orders"
     upstream: "http://order-service:8080"
-    require_auth: true
-    auth_type: "jwt"
+    protocol: HTTP
+    middlewares:
+      require_auth: true
+      auth_type: "jwt"
 ```
 
 ### With Rate Limiting
@@ -228,9 +242,11 @@ routes:
 routes:
   - path: "/api/v1/search"
     upstream: "http://search-service:8080"
-    rate_limit:
-      requests: 100
-      period: "minute"
+    protocol: HTTP
+    middlewares:
+      rate_limit:
+        requests: 100
+        period: "minute"
 ```
 
 ### WebSocket Support
@@ -238,6 +254,7 @@ routes:
 routes:
   - path: "/ws"
     upstream: "ws://websocket-service:8080"
+    protocol: SOCKET
     websocket: true
 ```
 
