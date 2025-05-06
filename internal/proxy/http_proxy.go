@@ -207,7 +207,7 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 	})
 
 	// Apply circuit breaker if enabled
-	if route.Middlewares.CircuitBreaker != nil && route.Middlewares.CircuitBreaker.Enabled {
+	if route.CircuitBreaker != nil && route.CircuitBreaker.Enabled {
 		// Create circuit breaker key - unique per route
 		circuitKey := route.Path
 
@@ -216,9 +216,9 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 		if !exists {
 			// Create circuit breaker config
 			cbConfig := CircuitBreakerConfig{
-				Threshold:     route.Middlewares.CircuitBreaker.Threshold,
-				Timeout:       time.Duration(route.Middlewares.CircuitBreaker.Timeout) * time.Second,
-				MaxConcurrent: route.Middlewares.CircuitBreaker.MaxConcurrent,
+				Threshold:     route.CircuitBreaker.Threshold,
+				Timeout:       time.Duration(route.CircuitBreaker.Timeout) * time.Second,
+				MaxConcurrent: route.CircuitBreaker.MaxConcurrent,
 			}
 
 			// Create a new circuit breaker
@@ -227,8 +227,8 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 
 			p.log.Info("Created circuit breaker for route",
 				logger.String("path", route.Path),
-				logger.Int("threshold", route.Middlewares.CircuitBreaker.Threshold),
-				logger.Int("timeout", route.Middlewares.CircuitBreaker.Timeout),
+				logger.Int("threshold", route.CircuitBreaker.Threshold),
+				logger.Int("timeout", route.CircuitBreaker.Timeout),
 			)
 		}
 

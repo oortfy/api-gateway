@@ -14,19 +14,24 @@ type RouteConfig struct {
 
 // Route represents a single API route
 type Route struct {
-	Path          string               `yaml:"path"`
-	Methods       []string             `yaml:"methods"`
-	Upstream      string               `yaml:"upstream"`
-	Protocol      string               `yaml:"protocol"`
-	StripPrefix   bool                 `yaml:"strip_prefix"`
-	Timeout       int                  `yaml:"timeout"`
-	WebSocket     *WebSocketConfig     `yaml:"websocket"`
-	LoadBalancing *LoadBalancingConfig `yaml:"load_balancing"`
-	ErrorHandling *ErrorHandling       `yaml:"error_handling"`
-	Compression   bool                 `yaml:"compression"`
-	IPWhitelist   []string             `yaml:"ip_whitelist"`
-	IPBlacklist   []string             `yaml:"ip_blacklist"`
-	Middlewares   *Middlewares         `yaml:"middlewares"`
+	Path            string                  `yaml:"path"`
+	Methods         []string                `yaml:"methods"`
+	Upstream        string                  `yaml:"upstream"`
+	StripPrefix     bool                    `yaml:"strip_prefix"`
+	RequireAuth     bool                    `yaml:"require_auth"`
+	Timeout         int                     `yaml:"timeout"`
+	WebSocket       *WebSocketConfig        `yaml:"websocket"`
+	RateLimit       *RateLimitConfig        `yaml:"rate_limit"`
+	Cache           *RouteCacheConfig       `yaml:"cache"`
+	CircuitBreaker  *CircuitBreakerSettings `yaml:"circuit_breaker"`
+	RetryPolicy     *RetryPolicy            `yaml:"retry_policy"`
+	LoadBalancing   *LoadBalancingConfig    `yaml:"load_balancing"`
+	HeaderTransform *HeaderTransform        `yaml:"header_transform"`
+	URLRewrite      *URLRewrite             `yaml:"url_rewrite"`
+	ErrorHandling   *ErrorHandling          `yaml:"error_handling"`
+	Compression     bool                    `yaml:"compression"`
+	IPWhitelist     []string                `yaml:"ip_whitelist"`
+	IPBlacklist     []string                `yaml:"ip_blacklist"`
 }
 
 // RouteCacheConfig contains cache configuration for a route
@@ -86,16 +91,6 @@ type ErrorHandling struct {
 	Templates      map[int]string `yaml:"templates"`
 }
 
-type Middlewares struct {
-	RequireAuth     bool                    `yaml:"require_auth"`
-	RateLimit       *RateLimitConfig        `yaml:"rate_limit"`
-	Cache           *RouteCacheConfig       `yaml:"cache"`
-	CircuitBreaker  *CircuitBreakerSettings `yaml:"circuit_breaker"`
-	RetryPolicy     *RetryPolicy            `yaml:"retry_policy"`
-	HeaderTransform *HeaderTransform        `yaml:"header_transform"`
-	URLRewrite      *URLRewrite             `yaml:"url_rewrite"`
-}
-
 // LoadRoutes loads route configurations from a YAML file
 func LoadRoutes(path string) (*RouteConfig, error) {
 	routesFile, err := os.Open(path)
@@ -128,29 +123,29 @@ func LoadRoutes(path string) (*RouteConfig, error) {
 		}
 
 		// Set defaults for retry policy
-		if route.Middlewares.RetryPolicy != nil && route.Middlewares.RetryPolicy.Enabled {
-			if route.Middlewares.RetryPolicy.Attempts == 0 {
-				routeConfig.Routes[i].Middlewares.RetryPolicy.Attempts = 3
+		if route.RetryPolicy != nil && route.RetryPolicy.Enabled {
+			if route.RetryPolicy.Attempts == 0 {
+				routeConfig.Routes[i].RetryPolicy.Attempts = 3
 			}
-			if route.Middlewares.RetryPolicy.PerTryTimeout == 0 {
-				routeConfig.Routes[i].Middlewares.RetryPolicy.PerTryTimeout = 5
+			if route.RetryPolicy.PerTryTimeout == 0 {
+				routeConfig.Routes[i].RetryPolicy.PerTryTimeout = 5
 			}
 		}
 
 		// Set defaults for circuit breaker
-		if route.Middlewares.CircuitBreaker != nil && route.Middlewares.CircuitBreaker.Enabled {
-			if route.Middlewares.CircuitBreaker.Threshold == 0 {
-				routeConfig.Routes[i].Middlewares.CircuitBreaker.Threshold = 5
+		if route.CircuitBreaker != nil && route.CircuitBreaker.Enabled {
+			if route.CircuitBreaker.Threshold == 0 {
+				routeConfig.Routes[i].CircuitBreaker.Threshold = 5
 			}
-			if route.Middlewares.CircuitBreaker.Timeout == 0 {
-				routeConfig.Routes[i].Middlewares.CircuitBreaker.Timeout = 30
+			if route.CircuitBreaker.Timeout == 0 {
+				routeConfig.Routes[i].CircuitBreaker.Timeout = 30
 			}
 		}
 
 		// Set defaults for cache
-		if route.Middlewares.Cache != nil && route.Middlewares.Cache.Enabled {
-			if route.Middlewares.Cache.TTL == 0 {
-				routeConfig.Routes[i].Middlewares.Cache.TTL = 60
+		if route.Cache != nil && route.Cache.Enabled {
+			if route.Cache.TTL == 0 {
+				routeConfig.Routes[i].Cache.TTL = 60
 			}
 		}
 	}
