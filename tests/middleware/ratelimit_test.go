@@ -39,8 +39,10 @@ func TestRateLimiter_Basic(t *testing.T) {
 
 	// Create mock route for the middleware
 	route := config.Route{
-		Path:      "/test",
-		RateLimit: &limitConfig,
+		Path: "/test",
+		Middlewares: &config.Middlewares{
+			RateLimit: &limitConfig,
+		},
 	}
 
 	// Create a test request
@@ -92,17 +94,21 @@ func TestRateLimiter_DisabledConfig(t *testing.T) {
 		{
 			name: "No rate limit config",
 			route: config.Route{
-				Path:      "/test",
-				RateLimit: nil,
+				Path: "/test",
+				Middlewares: &config.Middlewares{
+					RateLimit: nil,
+				},
 			},
 		},
 		{
 			name: "Rate limit disabled",
 			route: config.Route{
 				Path: "/test",
-				RateLimit: &config.RateLimitConfig{
-					Requests: 0, // Zero requests = disabled
-					Period:   "1s",
+				Middlewares: &config.Middlewares{
+					RateLimit: &config.RateLimitConfig{
+						Requests: 0, // Zero requests = disabled
+						Period:   "1s",
+					},
 				},
 			},
 		},
@@ -150,8 +156,10 @@ func TestRateLimiter_DifferentClients(t *testing.T) {
 
 	// Create mock route for the middleware
 	route := config.Route{
-		Path:      "/test",
-		RateLimit: &limitConfig,
+		Path: "/test",
+		Middlewares: &config.Middlewares{
+			RateLimit: &limitConfig,
+		},
 	}
 
 	// Create requests from different clients
@@ -220,8 +228,10 @@ func TestRateLimiter_TokenRefill(t *testing.T) {
 
 	// Create mock route for the middleware
 	route := config.Route{
-		Path:      "/test",
-		RateLimit: &limitConfig,
+		Path: "/test",
+		Middlewares: &config.Middlewares{
+			RateLimit: &limitConfig,
+		},
 	}
 
 	// Create a test request

@@ -3,19 +3,20 @@ package swagger
 import (
 	"api-gateway/internal/config"
 	"fmt"
-	"gopkg.in/yaml.v3"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"gopkg.in/yaml.v3"
 )
 
 // OpenAPISpec represents the OpenAPI 3.0 specification
 type OpenAPISpec struct {
-	OpenAPI string                 `yaml:"openapi" json:"openapi"`
-	Info    Info                   `yaml:"info" json:"info"`
-	Servers []Server               `yaml:"servers" json:"servers"`
-	Paths   map[string]*PathItem   `yaml:"paths" json:"paths"`
-	Components *Components         `yaml:"components" json:"components"`
+	OpenAPI    string               `yaml:"openapi" json:"openapi"`
+	Info       Info                 `yaml:"info" json:"info"`
+	Servers    []Server             `yaml:"servers" json:"servers"`
+	Paths      map[string]*PathItem `yaml:"paths" json:"paths"`
+	Components *Components          `yaml:"components" json:"components"`
 }
 
 type Info struct {
@@ -37,14 +38,14 @@ type PathItem struct {
 }
 
 type Operation struct {
-	Summary     string                  `yaml:"summary" json:"summary"`
-	Description string                  `yaml:"description,omitempty" json:"description,omitempty"`
-	Security    []map[string][]string   `yaml:"security,omitempty" json:"security,omitempty"`
-	Responses   map[string]*Response    `yaml:"responses" json:"responses"`
+	Summary     string                `yaml:"summary" json:"summary"`
+	Description string                `yaml:"description,omitempty" json:"description,omitempty"`
+	Security    []map[string][]string `yaml:"security,omitempty" json:"security,omitempty"`
+	Responses   map[string]*Response  `yaml:"responses" json:"responses"`
 }
 
 type Response struct {
-	Description string                 `yaml:"description" json:"description"`
+	Description string                `yaml:"description" json:"description"`
 	Content     map[string]*MediaType `yaml:"content,omitempty" json:"content,omitempty"`
 }
 
@@ -97,14 +98,14 @@ func GenerateSwagger(routes *config.RouteConfig) (*OpenAPISpec, error) {
 				},
 				"QueryTokenAuth": {
 					Type:        "apiKey",
-					In:         "query",
-					Name:       "token",
+					In:          "query",
+					Name:        "token",
 					Description: "JWT token in query parameter (fallback authentication)",
 				},
 				"QueryApiKeyAuth": {
 					Type:        "apiKey",
-					In:         "query",
-					Name:       "api_key",
+					In:          "query",
+					Name:        "api_key",
 					Description: "API key in query parameter (fallback authentication)",
 				},
 			},
@@ -114,7 +115,7 @@ func GenerateSwagger(routes *config.RouteConfig) (*OpenAPISpec, error) {
 	// Convert routes to OpenAPI paths
 	for _, route := range routes.Routes {
 		pathItem := &PathItem{}
-		
+
 		// Handle wildcard paths
 		path := route.Path
 		if strings.HasSuffix(path, "/*") {
@@ -134,7 +135,7 @@ func GenerateSwagger(routes *config.RouteConfig) (*OpenAPISpec, error) {
 			}
 
 			// Add security requirements if authentication is required
-			if route.RequireAuth {
+			if route.Middlewares.RequireAuth {
 				operation.Security = []map[string][]string{
 					{"BearerAuth": {}},
 					{"ApiKeyAuth": {}},
@@ -189,4 +190,4 @@ func WriteSwaggerFile(routes *config.RouteConfig, outputPath string) error {
 	}
 
 	return nil
-} 
+}
