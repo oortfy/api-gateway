@@ -291,7 +291,7 @@ routes:
     strip_prefix: false
     timeout: 120
     middlewares:
-    require_auth: true
+      require_auth: true
 ```
 
 ### With Rate Limiting
@@ -301,9 +301,9 @@ routes:
     upstream: "http://search-service:8080"
     protocol: HTTP
     middlewares:
-    rate_limit:
+      rate_limit:
         requests: 100000
-      period: "minute"
+        period: "minute"
 ```
 
 ### With Circuit Breaker
@@ -433,6 +433,36 @@ routes:
     timeout: 30
     middlewares:
       require_auth: true
+```
+
+### Service Discovery Example
+```yaml
+routes:
+  - path: "/api/recommendations/*"
+    methods: ["GET", "POST"]
+    protocol: HTTP
+    upstream: "http://recommendation-service:8090"
+    strip_prefix: true
+    timeout: 30
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: etcd
+      discoveries:
+        name: "recommendation-service"
+        prefix: "services"
+        fail_limit: 3
+      health_check_config:
+        path: "/health"
+        interval: 10
+        timeout: 2
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
 ```
 
 ---
