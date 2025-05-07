@@ -15,7 +15,6 @@ import (
 	"api-gateway/internal/proxy"
 	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
-	"api-gateway/internal/swagger"
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -73,8 +72,8 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 
 	// Setup rate limiters for routes with rate limiting enabled
 	for _, route := range routes.Routes {
-		if route.RateLimit != nil && route.RateLimit.Requests > 0 {
-			rateLimiter.AddLimit(route.Path, *route.RateLimit)
+		if route.Middlewares.RateLimit != nil && route.Middlewares.RateLimit.Requests > 0 {
+			rateLimiter.AddLimit(route.Path, *route.Middlewares.RateLimit)
 		}
 	}
 
@@ -116,14 +115,6 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 
 // Start initializes and starts the server
 func (s *Server) Start() error {
-	// Generate Swagger documentation
-	if err := swagger.WriteSwaggerFile(s.routes, "docs/swagger/swagger.yaml"); err != nil {
-		s.log.Error("Failed to generate Swagger documentation", logger.Error(err))
-		// Don't return error, continue server startup
-	} else {
-		s.log.Info("Generated Swagger documentation", logger.String("path", "docs/swagger/swagger.yaml"))
-	}
-
 	// Register routes
 	for _, route := range s.routes.Routes {
 		s.registerRoute(route)
@@ -255,7 +246,7 @@ func (s *Server) registerRoute(route config.Route) {
 		wsHandler := s.wsProxy.ProxyWebSocket(route)
 
 		// Apply authentication middleware if required
-		if route.RequireAuth {
+		if route.Middlewares.RequireAuth {
 			wsHandler = s.authMiddleware.Authenticate(wsHandler, route)
 		}
 
@@ -286,54 +277,54 @@ func (s *Server) registerRoute(route config.Route) {
 		httpHandler := s.httpProxy.ProxyRequest(route)
 
 		// Apply URL rewriting if configured
-		if route.URLRewrite != nil && len(route.URLRewrite.Patterns) > 0 {
-			httpHandler = s.urlRewriter.Rewrite(httpHandler, route.URLRewrite)
+		if route.Middlewares.URLRewrite != nil && len(route.Middlewares.URLRewrite.Patterns) > 0 {
+			httpHandler = s.urlRewriter.Rewrite(httpHandler, route.Middlewares.URLRewrite)
 			s.log.Info("Applied URL rewriting to route",
 				logger.String("path", route.Path),
-				logger.Int("patterns", len(route.URLRewrite.Patterns)),
+				logger.Int("patterns", len(route.Middlewares.URLRewrite.Patterns)),
 			)
 		}
 
 		// Apply header transformations if configured
-		if route.HeaderTransform != nil {
-			httpHandler = s.headerTransformer.Transform(httpHandler, route.HeaderTransform)
+		if route.Middlewares.HeaderTransform != nil {
+			httpHandler = s.headerTransformer.Transform(httpHandler, route.Middlewares.HeaderTransform)
 			s.log.Info("Applied header transformation to route",
 				logger.String("path", route.Path),
 			)
 		}
 
 		// Apply rate limiting if enabled
-		if route.RateLimit != nil && route.RateLimit.Requests > 0 {
+		if route.Middlewares.RateLimit != nil && route.Middlewares.RateLimit.Requests > 0 {
 			httpHandler = s.rateLimiter.RateLimit(httpHandler, route)
 			s.log.Info("Applied rate limiting to route",
 				logger.String("path", route.Path),
-				logger.Int("requests", route.RateLimit.Requests),
-				logger.String("period", route.RateLimit.Period),
+				logger.Int("requests", route.Middlewares.RateLimit.Requests),
+				logger.String("period", route.Middlewares.RateLimit.Period),
 			)
 		}
 
 		// Apply retry policy if enabled
-		if route.RetryPolicy != nil && route.RetryPolicy.Enabled {
-			httpHandler = s.retryMiddleware.Retry(httpHandler, route.RetryPolicy)
+		if route.Middlewares.RetryPolicy != nil && route.Middlewares.RetryPolicy.Enabled {
+			httpHandler = s.retryMiddleware.Retry(httpHandler, route.Middlewares.RetryPolicy)
 			s.log.Info("Applied retry policy to route",
 				logger.String("path", route.Path),
-				logger.Int("attempts", route.RetryPolicy.Attempts),
-				logger.Int("per_try_timeout", route.RetryPolicy.PerTryTimeout),
+				logger.Int("attempts", route.Middlewares.RetryPolicy.Attempts),
+				logger.Int("per_try_timeout", route.Middlewares.RetryPolicy.PerTryTimeout),
 			)
 		}
 
 		// Apply cache middleware if enabled for this route
-		if s.config.Cache.Enabled && route.Cache != nil && route.Cache.Enabled {
+		if s.config.Cache.Enabled && route.Middlewares.Cache != nil && route.Middlewares.Cache.Enabled {
 			httpHandler = s.cacheMiddleware.Cache(httpHandler, route)
 			s.log.Info("Applied cache middleware to route",
 				logger.String("path", route.Path),
-				logger.Int("ttl", route.Cache.TTL),
-				logger.Bool("cache_authenticated", route.Cache.CacheAuthenticated),
+				logger.Int("ttl", route.Middlewares.Cache.TTL),
+				logger.Bool("cache_authenticated", route.Middlewares.Cache.CacheAuthenticated),
 			)
 		}
 
 		// Apply authentication middleware if required
-		if route.RequireAuth {
+		if route.Middlewares.RequireAuth {
 			httpHandler = s.authMiddleware.Authenticate(httpHandler, route)
 		}
 

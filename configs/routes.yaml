@@ -1,72 +1,50 @@
 routes:
-  - path: "/auth/*"
-    upstream: "http://auth-service:8000"
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
-    protocol: HTTP
-    strip_prefix: false
-    require_auth: false
-    timeout: 120
-    rate_limit:
-      requests_per_minute: 100000
-      per_client: true
-      client_requests_per_minute: 100
-      client_identifier: "ip"
-    circuit_breaker:
-      enabled: true
-      threshold: 30
-      timeout: 120
-      max_concurrent: 10000
-    retry_policy:
-      max_attempts: 3
-      initial_interval: 1
-      max_interval: 10
-      multiplier: 2.0
-      retry_on_status_codes: [500, 502, 503, 504]
-
   - path: "/scanjobmanager/*"
     upstream: "http://scanjobmanager:8001"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    require_auth: true
     timeout: 120
-    rate_limit:
-      requests_per_minute: 100000
-      per_client: true
-      client_requests_per_minute: 100
-      client_identifier: "ip"
-    circuit_breaker:
-      enabled: true
-      threshold: 30
-      timeout: 120
-      max_concurrent: 10000
-    retry_policy:
-      max_attempts: 3
-      initial_interval: 1
-      max_interval: 10
-      multiplier: 2.0
-      retry_on_status_codes: [500, 502, 503, 504]
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests_per_minute: 100000
+        per_client: true
+        client_requests_per_minute: 100
+        client_identifier: "ip"
+      circuit_breaker:
+        enabled: true
+        threshold: 30
+        timeout: 120
+        max_concurrent: 10000
+      retry_policy:
+        max_attempts: 3
+        initial_interval: 1
+        max_interval: 10
+        multiplier: 2.0
+        retry_on_status_codes: [500, 502, 503, 504]
 
-  - path: "/project/*"
+  - path: "/project"
     upstream: "http://host.docker.internal:8002"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    require_auth: true
     timeout: 120
-    rate_limit:
-      requests_per_minute: 100000
-      per_client: true
-      client_requests_per_minute: 100
-      client_identifier: "ip"
-    circuit_breaker:
-      enabled: true
-      threshold: 30
-      timeout: 120
-      max_concurrent: 10000
-    retry_policy:
-      max_attempts: 3
-      initial_interval: 1
-      max_interval: 10
-      multiplier: 2.0
-      retry_on_status_codes: [500, 502, 503, 504]
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests_per_minute: 100000
+        per_client: true
+        client_requests_per_minute: 100
+        client_identifier: "ip"
+      circuit_breaker:
+        enabled: true
+        threshold: 30
+        timeout: 120
+        max_concurrent: 10000
+      retry_policy:
+        max_attempts: 3
+        initial_interval: 1
+        max_interval: 10
+        multiplier: 2.0
+        retry_on_status_codes: [500, 502, 503, 504]

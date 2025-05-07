@@ -19,6 +19,7 @@ type Config struct {
 	Cors     CorsConfig     `yaml:"cors"`
 	Metrics  MetricsConfig  `yaml:"metrics"`
 	Tracing  TracingConfig  `yaml:"tracing"`
+	Etcd     EtcdConfig     `yaml:"etcd"`
 }
 
 // ServerConfig contains server configuration
@@ -139,6 +140,10 @@ type WebSocketConfig struct {
 	Enabled      bool   `yaml:"enabled"`
 	Path         string `yaml:"path"`
 	UpstreamPath string `yaml:"upstream_path"`
+}
+
+type EtcdConfig struct {
+	Hosts string `yaml:"hosts"`
 }
 
 // LoadConfig loads configuration from a YAML file

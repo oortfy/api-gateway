@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -9,6 +10,7 @@ import (
 
 	"api-gateway/internal/config"
 	"api-gateway/internal/util"
+	"api-gateway/pkg/discoverer/etcd_discovery"
 	"api-gateway/pkg/logger"
 )
 
@@ -47,7 +49,7 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 
 	// Create load balancer if configured
 	var loadBalancer *LoadBalancer
-	if route.LoadBalancing != nil && len(route.LoadBalancing.Endpoints) > 0 {
+	if route.LoadBalancing != nil {
 		loadBalancer, err = NewLoadBalancer(route.LoadBalancing, p.log)
 		if err != nil {
 			p.log.Error("Failed to create load balancer",
@@ -58,6 +60,7 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 			p.log.Info("Created load balancer for route",
 				logger.String("path", route.Path),
 				logger.String("method", route.LoadBalancing.Method),
+				logger.String("driver", route.LoadBalancing.Driver),
 				logger.Int("endpoints", len(route.LoadBalancing.Endpoints)),
 			)
 		}
@@ -185,6 +188,41 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 		// Select target - either from load balancer or static
 		targetURL := target
 		if loadBalancer != nil {
+			driver := loadBalancer.GetDriver()
+			if driver != "static" {
+				discoveriesConfig := loadBalancer.GetServiceDiscoveries()
+				if discoveriesConfig != nil {
+					switch driver {
+					case "etcd":
+						var endpoints = []string{p.config.Etcd.Hosts}
+						serviceDiscovery, err := etcd_discovery.NewServiceDiscovery(endpoints, 5*time.Second)
+						if err != nil {
+							p.log.Error("Connect to etcd error",
+								logger.String("etcd", p.config.Etcd.Hosts),
+								logger.Error(err),
+							)
+						} else {
+							address, err := serviceDiscovery.DiscoverServices(discoveriesConfig.Prefix, discoveriesConfig.Name) // todo Retrieve the number of failed service retries based on discoveriesConfig.FailLimit
+							if err != nil {
+								p.log.Error("Failed to discover services",
+									logger.String("serviceName", discoveriesConfig.Name),
+									logger.Error(err),
+								)
+							} else {
+								healthyEndpoints, err := p.parseURLs("http", address) // The use of HTTP protocol in LAN is faster than HTTPS protocol
+								if err == nil {
+									loadBalancer.SetHealthyEndpoints(healthyEndpoints)
+								} else {
+									p.log.Error("Failed to convert address to urls",
+										logger.Error(err),
+									)
+								}
+							}
+						}
+					}
+				}
+			}
+
 			targetURL = loadBalancer.GetEndpoint()
 			p.log.Debug("Using load balanced endpoint",
 				logger.String("path", r.URL.Path),
@@ -207,7 +245,7 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 	})
 
 	// Apply circuit breaker if enabled
-	if route.CircuitBreaker != nil && route.CircuitBreaker.Enabled {
+	if route.Middlewares.CircuitBreaker != nil && route.Middlewares.CircuitBreaker.Enabled {
 		// Create circuit breaker key - unique per route
 		circuitKey := route.Path
 
@@ -216,9 +254,9 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 		if !exists {
 			// Create circuit breaker config
 			cbConfig := CircuitBreakerConfig{
-				Threshold:     route.CircuitBreaker.Threshold,
-				Timeout:       time.Duration(route.CircuitBreaker.Timeout) * time.Second,
-				MaxConcurrent: route.CircuitBreaker.MaxConcurrent,
+				Threshold:     route.Middlewares.CircuitBreaker.Threshold,
+				Timeout:       time.Duration(route.Middlewares.CircuitBreaker.Timeout) * time.Second,
+				MaxConcurrent: route.Middlewares.CircuitBreaker.MaxConcurrent,
 			}
 
 			// Create a new circuit breaker
@@ -227,8 +265,8 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 
 			p.log.Info("Created circuit breaker for route",
 				logger.String("path", route.Path),
-				logger.Int("threshold", route.CircuitBreaker.Threshold),
-				logger.Int("timeout", route.CircuitBreaker.Timeout),
+				logger.Int("threshold", route.Middlewares.CircuitBreaker.Threshold),
+				logger.Int("timeout", route.Middlewares.CircuitBreaker.Timeout),
 			)
 		}
 
@@ -244,4 +282,25 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 
 	// Return the standard proxy handler if circuit breaker is not enabled
 	return proxyHandler
+}
+
+// parseURLs returns parsed URL list with protocol auto-completion, or error on invalid format
+func (p *HTTPProxy) parseURLs(protocol string, address []string) ([]*url.URL, error) {
+	var urls []*url.URL
+	for _, addr := range address {
+		if !strings.Contains(addr, "://") {
+			addr = protocol + "://" + addr
+		}
+
+		u, err := url.Parse(addr)
+		if err != nil {
+			p.log.Error("Invalid URL",
+				logger.String("addr", fmt.Sprintf("invalid URL %q", addr)),
+				logger.Error(err),
+			)
+			return nil, fmt.Errorf("invalid URL %q: %w", addr, err)
+		}
+		urls = append(urls, u)
+	}
+	return urls, nil
 }
