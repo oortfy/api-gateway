@@ -39,7 +39,15 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
   - Hot-reload ready (config-driven)
   - Easy local development and testing
 
----
+- **Protocol Support**
+  - **HTTP Proxying**: Traditional HTTP/HTTPS reverse proxy
+  - **gRPC Support**: Full gRPC support with multiple operation modes:
+    - Pure gRPC proxying (gRPC → gRPC)
+    - Protocol conversion (HTTP ↔ gRPC)
+    - Automatic service discovery via etcd
+    - Support for gRPC reflection
+    - Streaming support
+    - Load balancing for gRPC services
 
 ## 📋 Table of Contents
 - [Quick Start](#quick-start)
@@ -66,15 +74,15 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 ### Installation
 ```bash
 # Clone the repository
- git clone https://github.com/yourusername/api-gateway.git
- cd api-gateway
+git clone https://github.com/yourusername/api-gateway.git
+cd api-gateway
 
 # Build and run with Docker
- docker-compose up -d
+docker-compose up -d
 
 # Or build and run locally
- make build
- ./bin/api-gateway
+make build
+./bin/api-gateway
 ```
 
 ### Basic Usage
@@ -87,20 +95,20 @@ routes:
     protocol: HTTP
     strip_prefix: true
     middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 100
-        period: "minute"
+    require_auth: true
+    rate_limit:
+      requests: 100
+      period: "minute"
   - path: "/manager/user"
     methods: ["GET", "POST"]
     upstream: "http://user-service:8080"
     protocol: HTTP
     strip_prefix: true
     middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 100
-        period: "minute"
+    require_auth: true
+    rate_limit:
+      requests: 100
+      period: "minute"
 ```
 2. Start the gateway:
 ```bash
@@ -230,6 +238,27 @@ middlewares:
     retry_on_status_codes: [500, 502, 503, 504]
 ```
 
+### gRPC Configuration Options
+
+- `protocol`: Set to "GRPC" for gRPC routes
+- `endpoints_protocol`: Specifies the backend protocol ("GRPC" or "HTTP")
+- `rpc_server`: Base path for the gRPC service
+- `path`: Full gRPC service name pattern (e.g., "api_gateway.shop.user.v1.User/*")
+- `upstream`: gRPC server address with "grpc://" scheme
+
+### Middleware Support for gRPC
+
+All standard middlewares work with gRPC:
+- Authentication
+- Rate limiting
+- Circuit breaker
+- Compression
+- Timeout handling
+- Error handling
+- Header transformation
+- Metrics collection
+- Tracing
+
 ---
 
 ## 🛣️ Route Examples
@@ -249,7 +278,7 @@ routes:
     upstream: "http://order-service:8080"
     protocol: HTTP
     middlewares:
-      require_auth: true
+    require_auth: true
 ```
 
 ### With Rate Limiting
@@ -259,9 +288,9 @@ routes:
     upstream: "http://search-service:8080"
     protocol: HTTP
     middlewares:
-      rate_limit:
-        requests: 100
-        period: "minute"
+    rate_limit:
+      requests: 100
+      period: "minute"
 ```
 
 ### With Caching
@@ -283,6 +312,53 @@ routes:
     upstream: "ws://websocket-service:8080"
     protocol: SOCKET
     websocket: true
+```
+
+### HTTP to HTTP Route
+```yaml
+routes:
+  - path: "/api/users"
+    protocol: "HTTP"
+    upstream: "http://users-service:8080"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_prefix: true
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 100
+        period: "1m"
+```
+
+### gRPC to gRPC Route
+```yaml
+routes:
+  - path: "api_gateway.shop.user.v1.User/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/user"
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+```
+
+### HTTP to gRPC Route (Protocol Conversion)
+```yaml
+routes:
+  - path: "/api/products"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/product"
+    upstream: "grpc://product-service:50051"
+    methods: ["GET", "POST"]
+    timeout: 30
 ```
 
 ---
@@ -386,6 +462,11 @@ make test
 ### Local Development
 ```bash
 make dev
+```
+
+### Docker Support
+```bash
+docker-compose up
 ```
 
 ---

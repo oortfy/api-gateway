@@ -195,3 +195,84 @@ routes:
         path: "/api/search/health"
         interval: 10
         timeout: 2
+
+  # HTTP to HTTP route example
+  - path: "/api/users"
+    protocol: "HTTP"
+    upstream: "http://users-service:8080"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_prefix: true
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 100
+        period: "1m"
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+      cache:
+        enabled: true
+        ttl: 300
+        cache_authenticated: false
+      header_transform:
+        request:
+          X-Service: "users"
+        response:
+          X-Response-Time: "${response_time}"
+      url_rewrite:
+        patterns:
+          - match: "/api/users"
+            replacement: "/v1/users"
+
+  # gRPC to gRPC route example
+  - path: "api_gateway.shop.user.v1.User/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/user"
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 100
+        period: "1m"
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+
+  # HTTP to gRPC route example
+  - path: "/api/products"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/product"
+    upstream: "grpc://product-service:50051"
+    methods: ["GET", "POST"]
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      header_transform:
+        request:
+          X-Service: "products"
+        response:
+          X-Response-Time: "${response_time}"
+
+  # gRPC to HTTP route example
+  - path: "api_gateway.shop.order.v1.Order/*"
+    protocol: "GRPC"
+    endpoints_protocol: "HTTP"
+    rpc_server: "/api/order"
+    upstream: "http://order-service:8080"
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
