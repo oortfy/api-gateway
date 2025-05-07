@@ -98,7 +98,7 @@ routes:
     middlewares:
       require_auth: false
     rate_limit:
-        requests: 100000
+      requests: 100000
       period: "minute"
       circuit_breaker:
         enabled: true
