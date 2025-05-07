@@ -8,21 +8,18 @@ routes:
     middlewares:
       require_auth: false
       rate_limit:
-        requests_per_minute: 100000
-        per_client: true
-        client_requests_per_minute: 100
-        client_identifier: "ip"
+        requests: 100000
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 30
-        timeout: 120
-        max_concurrent: 10000
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
-        max_attempts: 3
-        initial_interval: 1
-        max_interval: 10
-        multiplier: 2.0
-        retry_on_status_codes: [500, 502, 503, 504]
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 
   - path: "/scanjobmanager/*"
     upstream: "http://scanjobmanager:8001"
@@ -33,21 +30,18 @@ routes:
     middlewares:
       require_auth: true
       rate_limit:
-        requests_per_minute: 100000
-        per_client: true
-        client_requests_per_minute: 100
-        client_identifier: "ip"
+        requests: 100000
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 30
-        timeout: 120
-        max_concurrent: 10000
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
-        max_attempts: 3
-        initial_interval: 1
-        max_interval: 10
-        multiplier: 2.0
-        retry_on_status_codes: [500, 502, 503, 504]
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 
   - path: "/project"
     upstream: "http://host.docker.internal:8002"
@@ -58,18 +52,15 @@ routes:
     middlewares:
       require_auth: true
       rate_limit:
-        requests_per_minute: 100000
-        per_client: true
-        client_requests_per_minute: 100
-        client_identifier: "ip"
+        requests: 100000
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 30
-        timeout: 120
-        max_concurrent: 10000
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
-        max_attempts: 3
-        initial_interval: 1
-        max_interval: 10
-        multiplier: 2.0
-        retry_on_status_codes: [500, 502, 503, 504]
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
