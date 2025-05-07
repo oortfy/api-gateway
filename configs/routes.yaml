@@ -4,7 +4,7 @@ routes:
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
     middlewares:
       require_auth: false
       rate_limit:
@@ -26,7 +26,7 @@ routes:
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
     middlewares:
       require_auth: true
       rate_limit:
@@ -48,7 +48,7 @@ routes:
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
     middlewares:
       require_auth: true
       rate_limit:

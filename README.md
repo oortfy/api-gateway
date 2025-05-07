@@ -97,9 +97,9 @@ routes:
     timeout: 120
     middlewares:
       require_auth: false
-      rate_limit:
+    rate_limit:
         requests: 100000
-        period: "minute"
+      period: "minute"
       circuit_breaker:
         enabled: true
         threshold: 5
@@ -291,7 +291,7 @@ routes:
     strip_prefix: false
     timeout: 120
     middlewares:
-      require_auth: true
+    require_auth: true
 ```
 
 ### With Rate Limiting
@@ -301,9 +301,9 @@ routes:
     upstream: "http://search-service:8080"
     protocol: HTTP
     middlewares:
-      rate_limit:
+    rate_limit:
         requests: 100000
-        period: "minute"
+      period: "minute"
 ```
 
 ### With Circuit Breaker
