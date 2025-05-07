@@ -44,6 +44,5 @@ Thumbs.db
 logs/
 *.log 
 
-*.html
 *.out
 
