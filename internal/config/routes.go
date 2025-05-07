@@ -49,6 +49,8 @@ type LoadBalancingConfig struct {
 	Method            string             `yaml:"method"`
 	HealthCheck       bool               `yaml:"health_check"`
 	Endpoints         []string           `yaml:"endpoints"`
+	Driver            string             `yaml:"driver"`
+	Discoveries       *Discoveries       `yaml:"discoveries"`
 	HealthCheckConfig *HealthCheckConfig `yaml:"health_check_config"`
 }
 
@@ -94,6 +96,12 @@ type Middlewares struct {
 	RetryPolicy     *RetryPolicy            `yaml:"retry_policy"`
 	HeaderTransform *HeaderTransform        `yaml:"header_transform"`
 	URLRewrite      *URLRewrite             `yaml:"url_rewrite"`
+}
+
+type Discoveries struct {
+	Name      string `yaml:"name"`
+	Prefix    string `yaml:"prefix"`
+	FailLimit int    `yaml:"fail_limit"`
 }
 
 // LoadRoutes loads route configurations from a YAML file

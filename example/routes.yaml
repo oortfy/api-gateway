@@ -6,6 +6,8 @@ routes:
     load_balancing:
       method: "round_robin"
       health_check: true
+      driver: static
+      discoveries:
       endpoints:
         - "http://localhost:8001"
         - "http://localhost:8002"
@@ -175,3 +177,21 @@ routes:
       require_auth: false
       cache:
         enabled: false
+
+  - path: "/api/search/*"
+    upstream: "http://localhost:8087"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    protocol: HTTP
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: etcd
+      discoveries:
+        name: "searchServers"
+        prefix: "services"
+        fail_limit: 3
+      endpoints:
+      health_check_config:
+        path: "/api/search/health"
+        interval: 10
+        timeout: 2

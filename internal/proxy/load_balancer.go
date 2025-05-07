@@ -24,7 +24,7 @@ type LoadBalancer struct {
 
 // NewLoadBalancer creates a new load balancer
 func NewLoadBalancer(config *config.LoadBalancingConfig, log logger.Logger) (*LoadBalancer, error) {
-	if config == nil || len(config.Endpoints) == 0 {
+	if config == nil || (config.Driver == "static" && len(config.Endpoints) == 0) {
 		return nil, nil
 	}
 
@@ -41,7 +41,7 @@ func NewLoadBalancer(config *config.LoadBalancingConfig, log logger.Logger) (*Lo
 		endpoints = append(endpoints, url)
 	}
 
-	if len(endpoints) == 0 {
+	if config.Driver == "static" && len(endpoints) == 0 {
 		return nil, nil
 	}
 
@@ -201,4 +201,24 @@ func getErrorMessage(err error) string {
 		return "unknown error"
 	}
 	return err.Error()
+}
+
+// GetDriver return driver type
+func (lb *LoadBalancer) GetDriver() string {
+	return lb.config.Driver
+}
+
+// GetServiceDiscoveries return discoveries config
+func (lb *LoadBalancer) GetServiceDiscoveries() *config.Discoveries {
+	return lb.config.Discoveries
+}
+
+// SetHealthyEndpoints setting healthy endpoint
+func (lb *LoadBalancer) SetHealthyEndpoints(endpoints []*url.URL) bool {
+	lb.healthLock.RLock()
+	defer lb.healthLock.RUnlock()
+
+	lb.endpoints = endpoints
+
+	return true
 }
