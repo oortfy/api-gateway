@@ -39,7 +39,15 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
   - Hot-reload ready (config-driven)
   - Easy local development and testing
 
----
+- **Protocol Support**
+  - **HTTP Proxying**: Traditional HTTP/HTTPS reverse proxy
+  - **gRPC Support**: Full gRPC support with multiple operation modes:
+    - Pure gRPC proxying (gRPC → gRPC)
+    - Protocol conversion (HTTP ↔ gRPC)
+    - Automatic service discovery via etcd
+    - Support for gRPC reflection
+    - Streaming support
+    - Load balancing for gRPC services
 
 ## 📋 Table of Contents
 - [Quick Start](#quick-start)
@@ -66,41 +74,42 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 ### Installation
 ```bash
 # Clone the repository
- git clone https://github.com/yourusername/api-gateway.git
- cd api-gateway
+git clone https://github.com/yourusername/api-gateway.git
+cd api-gateway
 
 # Build and run with Docker
- docker-compose up -d
+docker-compose up -d
 
 # Or build and run locally
- make build
- ./bin/api-gateway
+make build
+./bin/api-gateway
 ```
 
 ### Basic Usage
 1. Configure your routes in `configs/routes.yaml`:
 ```yaml
 routes:
-  - path: "/users/*"
-    methods: ["GET", "POST"]
-    upstream: "http://user-service:8080"
+  - path: "/auth/*"
+    upstream: "http://auth-service:8000"
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
-    strip_prefix: true
+    strip_prefix: false
+    timeout: 120
     middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 100
-        period: "minute"
-  - path: "/manager/user"
-    methods: ["GET", "POST"]
-    upstream: "http://user-service:8080"
-    protocol: HTTP
-    strip_prefix: true
-    middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 100
-        period: "minute"
+      require_auth: false
+    rate_limit:
+      requests: 100000
+      period: "minute"
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+      retry_policy:
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 ```
 2. Start the gateway:
 ```bash
@@ -202,33 +211,62 @@ middlewares:
     requests: 100
     period: "minute"
 ```
+
 - **Caching**
 ```yaml
 middlewares:
   cache:
     enabled: true
     ttl: 300
-    vary_by_headers: ["Accept"]
+    cache_authenticated: false
 ```
+
 - **Circuit Breaker**
 ```yaml
 middlewares:
   circuit_breaker:
     enabled: true
-    threshold: 10
+    threshold: 5
     timeout: 30
-    max_concurrent: 3
+    max_concurrent: 100
 ```
+
 - **Retry Policy**
 ```yaml
 middlewares:
-  retry:
-    max_attempts: 3
-    initial_interval: 1
-    max_interval: 5
-    multiplier: 2.0
-    retry_on_status_codes: [500, 502, 503, 504]
+  retry_policy:
+    enabled: true
+    attempts: 3
+    per_try_timeout: 5
+    retry_on: ["connection_error", "server_error"]
 ```
+
+- **Authentication**
+```yaml
+middlewares:
+  require_auth: true
+```
+
+### gRPC Configuration Options
+
+- `protocol`: Set to "GRPC" for gRPC routes
+- `endpoints_protocol`: Specifies the backend protocol ("GRPC" or "HTTP")
+- `rpc_server`: Base path for the gRPC service
+- `path`: Full gRPC service name pattern (e.g., "api_gateway.shop.user.v1.User/*")
+- `upstream`: gRPC server address with "grpc://" scheme
+
+### Middleware Support for gRPC
+
+All standard middlewares work with gRPC:
+- Authentication
+- Rate limiting
+- Circuit breaker
+- Compression
+- Timeout handling
+- Error handling
+- Header transformation
+- Metrics collection
+- Tracing
 
 ---
 
@@ -240,14 +278,18 @@ routes:
   - path: "/api/v1/users"
     upstream: "http://user-service:8080"
     protocol: HTTP
+    strip_prefix: false
+    timeout: 120
 ```
 
 ### With Authentication
 ```yaml
 routes:
-  - path: "/api/v1/orders"
-    upstream: "http://order-service:8080"
+  - path: "/scanjobmanager/*"
+    upstream: "http://scanjobmanager:8001"
     protocol: HTTP
+    strip_prefix: false
+    timeout: 120
     middlewares:
       require_auth: true
 ```
@@ -260,8 +302,36 @@ routes:
     protocol: HTTP
     middlewares:
       rate_limit:
-        requests: 100
+        requests: 100000
         period: "minute"
+```
+
+### With Circuit Breaker
+```yaml
+routes:
+  - path: "/api/v1/orders"
+    upstream: "http://order-service:8080"
+    protocol: HTTP
+    middlewares:
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+```
+
+### With Retry Policy
+```yaml
+routes:
+  - path: "/api/v1/products"
+    upstream: "http://product-service:8080"
+    protocol: HTTP
+    middlewares:
+      retry_policy:
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 ```
 
 ### With Caching
@@ -273,7 +343,34 @@ routes:
     middlewares:
       cache:
         enabled: true
-        ttl: 120
+        ttl: 300
+        cache_authenticated: false
+```
+
+### Complete Example with All Middlewares
+```yaml
+routes:
+  - path: "/project"
+    upstream: "http://host.docker.internal:8002"
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    protocol: HTTP
+    strip_prefix: false
+    timeout: 120
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 100000
+        period: "minute"
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+      retry_policy:
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 ```
 
 ### WebSocket Support
@@ -282,7 +379,90 @@ routes:
   - path: "/ws"
     upstream: "ws://websocket-service:8080"
     protocol: SOCKET
-    websocket: true
+    websocket:
+      enabled: true
+    middlewares:
+      require_auth: true
+```
+
+### HTTP to HTTP Route
+```yaml
+routes:
+  - path: "/api/users"
+    protocol: "HTTP"
+    upstream: "http://users-service:8080"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_prefix: true
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 100000
+        period: "minute"
+```
+
+### gRPC to gRPC Route
+```yaml
+routes:
+  - path: "api_gateway.shop.user.v1.User/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/user"
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+```
+
+### HTTP to gRPC Route (Protocol Conversion)
+```yaml
+routes:
+  - path: "/api/products"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/product"
+    upstream: "grpc://product-service:50051"
+    methods: ["GET", "POST"]
+    timeout: 30
+    middlewares:
+      require_auth: true
+```
+
+### Service Discovery Example
+```yaml
+routes:
+  - path: "/api/recommendations/*"
+    methods: ["GET", "POST"]
+    protocol: HTTP
+    upstream: "http://recommendation-service:8090"
+    strip_prefix: true
+    timeout: 30
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: etcd
+      discoveries:
+        name: "recommendation-service"
+        prefix: "services"
+        fail_limit: 3
+      health_check_config:
+        path: "/health"
+        interval: 10
+        timeout: 2
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
 ```
 
 ---
@@ -386,6 +566,11 @@ make test
 ### Local Development
 ```bash
 make dev
+```
+
+### Docker Support
+```bash
+docker-compose up
 ```
 
 ---

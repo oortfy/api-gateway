@@ -7,7 +7,6 @@ routes:
       method: "round_robin"
       health_check: true
       driver: static
-      discoveries:
       endpoints:
         - "http://localhost:8001"
         - "http://localhost:8002"
@@ -61,9 +60,9 @@ routes:
       require_auth: true
       circuit_breaker:
         enabled: true
-        threshold: 3
-        timeout: 60
-        max_concurrent: 50
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
         enabled: true
         attempts: 3
@@ -86,74 +85,9 @@ routes:
         requests: 500
         period: "minute"
 
-  - path: "/api/search/*"
-    methods: ["GET"]
-    protocol: HTTP
-    upstream: "http://search-service:8087"
-    strip_prefix: true
-    timeout: 45
-    middlewares:
-      require_auth: false
-      rate_limit:
-        requests: 50
-        period: "minute"
-      cache:
-        enabled: true
-        ttl: 120
-        cache_authenticated: false
-
-  - path: "/api/legacy/*"
-    methods: ["GET", "POST"]
-    protocol: HTTP
-    upstream: "http://legacy-service:8088"
-    strip_prefix: true
-    timeout: 60
-    middlewares:
-      require_auth: true
-      url_rewrite:
-        patterns:
-          - match: "/api/legacy/users/(.*)"
-            replacement: "/internal/users/$1"
-      header_transform:
-        request:
-          "X-Legacy-System": "true"
-        response:
-          "X-Powered-By": ""
-        remove: ["Server"]
-
-  - path: "/api/metrics/*"
-    methods: ["GET"]
-    protocol: HTTP
-    upstream: "http://metrics-service:8089"
-    strip_prefix: true
-    timeout: 15
-    middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 50
-        period: "minute"
-
-  - path: "/scanjobmanager/*"
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    protocol: HTTP
-    upstream: "http://localhost:8001"
-    strip_prefix: false
-    timeout: 30
-    middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 2
-        period: "minute"
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 50
-
   - path: "/ws/*"
     upstream: "http://websocket-service:8086"
     protocol: SOCKET
-    strip_prefix: false
     timeout: 60
     websocket:
       enabled: true
@@ -163,20 +97,9 @@ routes:
       require_auth: true
       circuit_breaker:
         enabled: true
-        threshold: 3
-        timeout: 60
-        max_concurrent: 200
-      
-  - path: "/health"
-    methods: ["GET"]
-    upstream: "http://localhost:8080"
-    protocol: HTTP
-    strip_prefix: false
-    timeout: 5
-    middlewares:
-      require_auth: false
-      cache:
-        enabled: false
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
 
   - path: "/api/search/*"
     upstream: "http://localhost:8087"
@@ -190,8 +113,118 @@ routes:
         name: "searchServers"
         prefix: "services"
         fail_limit: 3
-      endpoints:
       health_check_config:
         path: "/api/search/health"
         interval: 10
         timeout: 2
+
+  # HTTP to HTTP route example
+  - path: "/api/users"
+    protocol: "HTTP"
+    upstream: "http://users-service:8080"
+    methods: ["GET", "POST", "PUT", "DELETE"]
+    strip_prefix: true
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 100
+        period: "minute"
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+      cache:
+        enabled: true
+        ttl: 300
+        cache_authenticated: false
+      header_transform:
+        request:
+          X-Service: "users"
+        response:
+          X-Response-Time: "${response_time}"
+      url_rewrite:
+        patterns:
+          - match: "/api/users"
+            replacement: "/v1/users"
+
+  # gRPC to gRPC route example
+  - path: "api_gateway.shop.user.v1.User/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/user"
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+
+  # HTTP to gRPC route example
+  - path: "/api/products"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/product"
+    upstream: "grpc://product-service:50051"
+    methods: ["GET", "POST"]
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      header_transform:
+        request:
+          X-Service: "products"
+        response:
+          X-Response-Time: "${response_time}"
+
+  # gRPC to HTTP route example
+  - path: "api_gateway.shop.order.v1.Order/*"
+    protocol: "GRPC"
+    endpoints_protocol: "HTTP"
+    rpc_server: "/api/order"
+    upstream: "http://order-service:8080"
+    timeout: 30
+    compression: true
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+
+  # Example of etcd-based service discovery
+  - path: "/api/recommendations/*"
+    methods: ["GET", "POST"]
+    protocol: HTTP
+    upstream: "http://recommendation-service:8090"
+    strip_prefix: true
+    timeout: 30
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: etcd
+      discoveries:
+        name: "recommendation-service"
+        prefix: "services"
+        fail_limit: 3
+      health_check_config:
+        path: "/health"
+        interval: 10
+        timeout: 2
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+      rate_limit:
+        requests: 1000
+        period: "minute"
