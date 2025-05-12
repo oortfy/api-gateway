@@ -10,34 +10,34 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 ## 🚀 Features
 
 - **Dynamic Routing & Proxy**
-  - HTTP and WebSocket proxying
-  - Path-based routing, prefix stripping, and URL rewriting
-  - Modular per-route middleware configuration
+    - HTTP and WebSocket proxying
+    - Path-based routing, prefix stripping, and URL rewriting
+    - Modular per-route middleware configuration
 
 - **Traffic Management**
-  - Rate limiting (per route, per client)
-  - Circuit breaker
-  - Request retries with backoff
-  - Load balancing (static, service discovery)
-  - Response caching (configurable per route)
+    - Rate limiting (per route, per client)
+    - Circuit breaker
+    - Request retries with backoff
+    - Load balancing (static, service discovery)
+    - Response caching (configurable per route)
 
 - **Security**
-  - API Key and JWT authentication (header or query param)
-  - CORS configuration
-  - TLS support
-  - Header security (HSTS, XSS, etc.)
+    - API Key and JWT authentication (header or query param)
+    - CORS configuration
+    - TLS support
+    - Header security (HSTS, XSS, etc.)
 
 - **Observability**
-  - Prometheus metrics
-  - Distributed tracing (Jaeger, OpenTelemetry)
-  - Structured JSON logging
-  - Health checks
-  - Optional IP geolocation (IP2Location LITE)
+    - Prometheus metrics
+    - Distributed tracing (Jaeger, OpenTelemetry)
+    - Structured JSON logging
+    - Health checks
+    - Optional IP geolocation (IP2Location LITE)
 
 - **Developer Experience**
-  - 📚 **Dynamic OpenAPI/Swagger documentation** auto-generated from your route config
-  - Hot-reload ready (config-driven)
-  - Easy local development and testing
+    - 📚 **Dynamic OpenAPI/Swagger documentation** auto-generated from your route config
+    - Hot-reload ready (config-driven)
+    - Easy local development and testing
 
 ---
 
@@ -330,11 +330,11 @@ curl "http://localhost:8080/api/v1/users?api_key=your-api-key"
 **To enable geolocation:**
 1. Download the IP2Location LITE DB1 from [IP2Location](https://lite.ip2location.com/)
 2. Place it in one of:
-   - `./IP2LOCATION-LITE-DB1.BIN`
-   - `./configs/IP2LOCATION-LITE-DB1.BIN`
-   - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
-   - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
-   - Or set the `IP2LOCATION_DB_PATH` env var
+    - `./IP2LOCATION-LITE-DB1.BIN`
+    - `./configs/IP2LOCATION-LITE-DB1.BIN`
+    - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
+    - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
+    - Or set the `IP2LOCATION_DB_PATH` env var
 
 **Test endpoint:**
 ```bash

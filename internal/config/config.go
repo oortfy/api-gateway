@@ -2,10 +2,10 @@ package config
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"strings"
 
+	"github.com/gobuffalo/packr/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -146,19 +146,31 @@ type EtcdConfig struct {
 	Hosts string `yaml:"hosts"`
 }
 
+// configBox holds embedded configuration files using packr
+// Files are automatically embedded from ./configs directory during build
+var configBox = packr.New("configs", "./configs")
+
 // LoadConfig loads configuration from a YAML file
 func LoadConfig(path string) (*Config, error) {
-	configFile, err := os.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open config file: %w", err)
-	}
-	defer configFile.Close()
+	var data []byte
+	var err error
 
-	data, err := io.ReadAll(configFile)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	// Development mode: Try reading from filesystem first
+	if os.Getenv("GO_ENV") == "development" {
+		data, err = os.ReadFile("configs/" + path)
+		if err == nil {
+			goto PARSE_CONFIG
+		}
+		// Continue to embedded config if file read fails
 	}
 
+	// Production mode: Read from embedded packr box
+	data, err = configBox.Find("config.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("failed to load config (both file and embedded): %w", err)
+	}
+
+PARSE_CONFIG:
 	// Replace environment variables in the format ${VAR_NAME}
 	data = replaceEnvVars(data)
 
