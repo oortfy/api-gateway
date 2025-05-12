@@ -32,10 +32,12 @@ func TestCacheMiddleware_BasicCaching(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true,
-			TTL:                60,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true,
+				TTL:                60,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
@@ -95,10 +97,12 @@ func TestCacheMiddleware_ShouldNotCacheNonGetRequests(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true,
-			TTL:                60,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true,
+				TTL:                60,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
@@ -150,10 +154,12 @@ func TestCacheMiddleware_NoCache(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true,
-			TTL:                60,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true,
+				TTL:                60,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
@@ -207,10 +213,12 @@ func TestCacheMiddleware_VaryHeaders(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true,
-			TTL:                60,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true,
+				TTL:                60,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
@@ -272,10 +280,12 @@ func TestCacheMiddleware_ErrorResponses(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true,
-			TTL:                60,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true,
+				TTL:                60,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
@@ -334,10 +344,12 @@ func TestCacheMiddleware_CacheExpiration(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true,
-			TTL:                ttl,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true,
+				TTL:                ttl,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
@@ -397,10 +409,12 @@ func TestCacheMiddleware_Disabled(t *testing.T) {
 
 	routeConfig := config.Route{
 		Path: "/test",
-		Cache: &config.RouteCacheConfig{
-			Enabled:            true, // Enabled for route, but global config overrides
-			TTL:                60,
-			CacheAuthenticated: false,
+		Middlewares: &config.Middlewares{
+			Cache: &config.RouteCacheConfig{
+				Enabled:            true, // Enabled for route, but global config overrides
+				TTL:                60,
+				CacheAuthenticated: false,
+			},
 		},
 	}
 
