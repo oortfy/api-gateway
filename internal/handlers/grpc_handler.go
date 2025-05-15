@@ -5,10 +5,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
+	"github.com/gin-gonic/gin"
 
 	"api-gateway/internal/config"
 	"api-gateway/internal/proxy"
@@ -27,10 +26,8 @@ func NewGRPCHandler(route *config.Route) (*GRPCHandler, error) {
 		return nil, fmt.Errorf("route configuration is required")
 	}
 
-	grpcProxy, err := proxy.NewGRPCProxy(route)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create gRPC proxy: %w", err)
-	}
+	// Create gRPC proxy with default connection settings
+	grpcProxy := proxy.NewGRPCProxy(5*time.Minute, 100) // 5 min idle timeout, 100 max connections
 
 	return &GRPCHandler{
 		route:     route,
@@ -40,28 +37,9 @@ func NewGRPCHandler(route *config.Route) (*GRPCHandler, error) {
 
 // ServeHTTP implements the http.Handler interface
 func (h *GRPCHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Check if this is a gRPC request
-	if isGRPCRequest(r) {
-		h.handleGRPCRequest(w, r)
-		return
-	}
-
-	// Handle HTTP request
-	if h.route.EndpointsProtocol == config.ProtocolGRPC {
-		h.grpcProxy.ProxyHTTPToGRPC(w, r)
-		return
-	}
-
-	http.Error(w, "unsupported protocol", http.StatusBadRequest)
-}
-
-// handleGRPCRequest handles incoming gRPC requests
-func (h *GRPCHandler) handleGRPCRequest(w http.ResponseWriter, r *http.Request) {
-	// Validate gRPC request
-	if r.ProtoMajor != 2 {
-		http.Error(w, "gRPC requires HTTP/2", http.StatusBadRequest)
-		return
-	}
+	// Create a new gin context
+	c, _ := gin.CreateTestContext(w)
+	c.Request = r
 
 	// Extract full method name from the path
 	fullMethodName := strings.TrimPrefix(r.URL.Path, h.route.Path)
@@ -70,117 +48,12 @@ func (h *GRPCHandler) handleGRPCRequest(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Create context with metadata
-	ctx := r.Context()
-	md := extractMetadata(r)
-	ctx = metadata.NewIncomingContext(ctx, md)
-
-	// Handle based on endpoint protocol
-	switch h.route.EndpointsProtocol {
-	case config.ProtocolHTTP:
-		// gRPC to HTTP conversion
-		resp, err := h.grpcProxy.ProxyGRPCToHTTP(ctx, fullMethodName, nil) // TODO: Read request body
-		if err != nil {
-			handleError(w, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/grpc")
-		w.Write(resp)
-
-	case config.ProtocolGRPC, "":
-		// Pure gRPC proxy
-		resp, err := h.grpcProxy.ProxyGRPCToGRPC(ctx, fullMethodName, nil) // TODO: Read request body
-		if err != nil {
-			handleError(w, err)
-			return
-		}
-		w.Header().Set("Content-Type", "application/grpc")
-		w.Write(resp)
-
-	default:
-		http.Error(w, "unsupported protocol", http.StatusBadRequest)
-	}
+	// Handle the request using our optimized proxy
+	h.grpcProxy.ProxyHandler(c, h.route.Upstream, fullMethodName)
 }
 
 // Close closes the gRPC handler and its resources
 func (h *GRPCHandler) Close() error {
-	return h.grpcProxy.Close()
-}
-
-// Helper functions
-
-func isGRPCRequest(r *http.Request) bool {
-	return r.ProtoMajor == 2 && strings.Contains(r.Header.Get("Content-Type"), "application/grpc")
-}
-
-func extractMetadata(r *http.Request) metadata.MD {
-	md := metadata.MD{}
-	for k, v := range r.Header {
-		k = strings.ToLower(k)
-		if isValidMetadataHeader(k) {
-			md[k] = v
-		}
-	}
-	return md
-}
-
-func isValidMetadataHeader(header string) bool {
-	// List of headers that should not be propagated
-	excluded := map[string]bool{
-		"host":              true,
-		"content-length":    true,
-		"transfer-encoding": true,
-		"connection":        true,
-		"upgrade":           true,
-	}
-	return !excluded[header]
-}
-
-func handleError(w http.ResponseWriter, err error) {
-	if st, ok := status.FromError(err); ok {
-		w.Header().Set("Content-Type", "application/grpc")
-		w.WriteHeader(httpStatusFromGRPCCode(st.Code()))
-		// TODO: Write proper gRPC error response
-		return
-	}
-	http.Error(w, err.Error(), http.StatusInternalServerError)
-}
-
-func httpStatusFromGRPCCode(code codes.Code) int {
-	switch code {
-	case codes.OK:
-		return http.StatusOK
-	case codes.Canceled:
-		return http.StatusRequestTimeout
-	case codes.Unknown:
-		return http.StatusInternalServerError
-	case codes.InvalidArgument:
-		return http.StatusBadRequest
-	case codes.DeadlineExceeded:
-		return http.StatusGatewayTimeout
-	case codes.NotFound:
-		return http.StatusNotFound
-	case codes.AlreadyExists:
-		return http.StatusConflict
-	case codes.PermissionDenied:
-		return http.StatusForbidden
-	case codes.ResourceExhausted:
-		return http.StatusTooManyRequests
-	case codes.FailedPrecondition:
-		return http.StatusPreconditionFailed
-	case codes.Aborted:
-		return http.StatusConflict
-	case codes.OutOfRange:
-		return http.StatusRequestedRangeNotSatisfiable
-	case codes.Unimplemented:
-		return http.StatusNotImplemented
-	case codes.Internal:
-		return http.StatusInternalServerError
-	case codes.Unavailable:
-		return http.StatusServiceUnavailable
-	case codes.DataLoss:
-		return http.StatusInternalServerError
-	default:
-		return http.StatusInternalServerError
-	}
+	h.grpcProxy.Close()
+	return nil
 }

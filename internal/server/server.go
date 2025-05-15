@@ -16,6 +16,7 @@ import (
 	"api-gateway/internal/swagger"
 	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
+
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

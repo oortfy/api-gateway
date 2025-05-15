@@ -10,34 +10,34 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 ## 🚀 Features
 
 - **Dynamic Routing & Proxy**
-    - HTTP and WebSocket proxying
-    - Path-based routing, prefix stripping, and URL rewriting
-    - Modular per-route middleware configuration
+  - HTTP and WebSocket proxying
+  - Path-based routing, prefix stripping, and URL rewriting
+  - Modular per-route middleware configuration
 
 - **Traffic Management**
-    - Rate limiting (per route, per client)
-    - Circuit breaker
-    - Request retries with backoff
-    - Load balancing (static, service discovery)
-    - Response caching (configurable per route)
+  - Rate limiting (per route, per client)
+  - Circuit breaker
+  - Request retries with backoff
+  - Load balancing (static, service discovery)
+  - Response caching (configurable per route)
 
 - **Security**
-    - API Key and JWT authentication (header or query param)
-    - CORS configuration
-    - TLS support
-    - Header security (HSTS, XSS, etc.)
+  - API Key and JWT authentication (header or query param)
+  - CORS configuration
+  - TLS support
+  - Header security (HSTS, XSS, etc.)
 
 - **Observability**
-    - Prometheus metrics
-    - Distributed tracing (Jaeger, OpenTelemetry)
-    - Structured JSON logging
-    - Health checks
-    - Optional IP geolocation (IP2Location LITE)
+  - Prometheus metrics
+  - Distributed tracing (Jaeger, OpenTelemetry)
+  - Structured JSON logging
+  - Health checks
+  - Optional IP geolocation (IP2Location LITE)
 
 - **Developer Experience**
-    - 📚 **Dynamic OpenAPI/Swagger documentation** auto-generated from your route config
-    - Hot-reload ready (config-driven)
-    - Easy local development and testing
+  - 📚 **Dynamic OpenAPI/Swagger documentation** auto-generated from your route config
+  - Hot-reload ready (config-driven)
+  - Easy local development and testing
 
 - **Protocol Support**
   - **HTTP Proxying**: Traditional HTTP/HTTPS reverse proxy
@@ -255,6 +255,64 @@ middlewares:
 - `path`: Full gRPC service name pattern (e.g., "api_gateway.shop.user.v1.User/*")
 - `upstream`: gRPC server address with "grpc://" scheme
 
+#### Connection Pool Configuration
+```yaml
+grpc:
+  pool:
+    max_idle: 5m          # Maximum idle connection time
+    max_conns: 100        # Maximum connections in pool
+    health_check: true    # Enable health checks
+    check_interval: 30s   # Health check interval
+```
+
+#### Retry Configuration
+```yaml
+grpc:
+  retry:
+    max_attempts: 3       # Maximum retry attempts
+    initial_backoff: 100ms # Initial backoff duration
+    max_backoff: 2s       # Maximum backoff duration
+    backoff_multiplier: 2.0 # Backoff multiplier
+```
+
+#### Metrics
+The gRPC client pool exports the following Prometheus metrics:
+- `grpc_pool_active_connections`: Current number of active connections
+- `grpc_pool_connection_errors_total`: Total number of connection errors
+- `grpc_rpc_duration_seconds`: Duration of gRPC RPCs (histogram)
+- `grpc_rpc_errors_total`: Total number of RPC errors
+- `grpc_health_check_status`: Health status of connections (1=healthy, 0=unhealthy)
+
+### Example gRPC Route with Full Configuration
+```yaml
+routes:
+  - path: "api_gateway.shop.user.v1.User/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/user"
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    compression: true
+    grpc:
+      pool:
+        max_idle: 5m
+        max_conns: 100
+        health_check: true
+        check_interval: 30s
+      retry:
+        max_attempts: 3
+        initial_backoff: 100ms
+        max_backoff: 2s
+        backoff_multiplier: 2.0
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+```
+
 ### Middleware Support for gRPC
 
 All standard middlewares work with gRPC:
@@ -267,8 +325,6 @@ All standard middlewares work with gRPC:
 - Header transformation
 - Metrics collection
 - Tracing
-
----
 
 ## 🛣️ Route Examples
 
@@ -291,7 +347,7 @@ routes:
     strip_prefix: false
     timeout: 120
     middlewares:
-      require_auth: true
+    require_auth: true
 ```
 
 ### With Rate Limiting
@@ -301,9 +357,9 @@ routes:
     upstream: "http://search-service:8080"
     protocol: HTTP
     middlewares:
-      rate_limit:
+    rate_limit:
         requests: 100000
-        period: "minute"
+      period: "minute"
 ```
 
 ### With Circuit Breaker
@@ -465,8 +521,6 @@ routes:
         max_concurrent: 100
 ```
 
----
-
 ## 🔒 Authentication
 
 - **API Key**: `x-api-key` header or `api_key` query param
@@ -481,8 +535,6 @@ curl "http://localhost:8080/api/v1/users?token=your.jwt.token"
 curl "http://localhost:8080/api/v1/users?api_key=your-api-key"
 ```
 
----
-
 ## 🚦 Traffic Management
 
 - **Rate Limiting**: Per route, per client, configurable period and burst
@@ -491,16 +543,12 @@ curl "http://localhost:8080/api/v1/users?api_key=your-api-key"
 - **Retries**: Per route, with backoff
 - **Load Balancing**: Static endpoints or service discovery
 
----
-
 ## 📊 Observability
 
 - **Metrics**: Prometheus metrics at `/metrics`
 - **Tracing**: Distributed tracing (Jaeger, OpenTelemetry)
 - **Logging**: Structured JSON logs
 - **Health Checks**: `/health` endpoint
-
----
 
 ## 🌍 Client IP & Geolocation
 
@@ -510,19 +558,17 @@ curl "http://localhost:8080/api/v1/users?api_key=your-api-key"
 **To enable geolocation:**
 1. Download the IP2Location LITE DB1 from [IP2Location](https://lite.ip2location.com/)
 2. Place it in one of:
-    - `./IP2LOCATION-LITE-DB1.BIN`
-    - `./configs/IP2LOCATION-LITE-DB1.BIN`
-    - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
-    - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
-    - Or set the `IP2LOCATION_DB_PATH` env var
+   - `./IP2LOCATION-LITE-DB1.BIN`
+   - `./configs/IP2LOCATION-LITE-DB1.BIN`
+   - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
+   - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
+   - Or set the `IP2LOCATION_DB_PATH` env var
 
 **Test endpoint:**
 ```bash
 curl http://localhost:8080/test-ip | jq
 curl -H "X-Real-IP: 8.8.8.8" http://localhost:8080/test-ip | jq
 ```
-
----
 
 ## 📚 API Documentation
 
@@ -549,8 +595,6 @@ paths:
           description: Success
 ```
 
----
-
 ## 🛠️ Development
 
 ### Building
@@ -573,8 +617,6 @@ make dev
 docker-compose up
 ```
 
----
-
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -584,8 +626,6 @@ docker-compose up
 5. Open a Pull Request
 
 All contributions must be made back to this project as per our license terms.
-
----
 
 ## 📄 License
 
@@ -597,3 +637,155 @@ Key points:
 - ✅ You must share modifications back to this project
 - ❌ You cannot sell this software as a standalone product
 - ❌ You cannot distribute closed source versions
+
+## gRPC Support
+
+The API Gateway supports efficient HTTP↔gRPC protocol conversion with the following features:
+
+### Features
+- **Connection Pooling**: Efficient reuse of gRPC connections
+- **Dynamic Service Discovery**: Automatic service discovery via etcd
+- **Protocol Conversion**: Seamless HTTP↔gRPC conversion
+- **Performance Optimized**: Connection reuse and caching for better performance
+
+### Configuration Example
+
+```yaml
+routes:
+  - path: "/users/*"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"  # Backend is gRPC
+    upstream: "grpc://user-service:50051"
+    strip_prefix: true
+    timeout: 30
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+
+  - path: "api.users.v1.UserService/*"
+    protocol: "GRPC"           # Accept gRPC requests
+    endpoints_protocol: "GRPC"  # Backend is gRPC
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: "etcd"
+      discoveries:
+        name: "user-service"
+        prefix: "services"
+        fail_limit: 3
+```
+
+### Example Usage
+
+1. **HTTP to gRPC**:
+```bash
+# Call gRPC service using HTTP
+curl -X POST http://gateway:8080/users/GetUser \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "123"}'
+
+# Response
+{
+  "user": {
+    "id": "123",
+    "name": "John Doe",
+    "email": "john@example.com"
+  }
+}
+```
+
+2. **Direct gRPC**:
+```go
+// Using standard gRPC client
+conn, err := grpc.Dial("gateway:8080", grpc.WithInsecure())
+client := api.NewUserServiceClient(conn)
+
+resp, err := client.GetUser(context.Background(), &api.GetUserRequest{
+    UserId: "123",
+})
+```
+
+### Performance Settings
+
+The gRPC proxy is optimized for performance with these default settings:
+```yaml
+grpc:
+  max_idle_time: 5m          # Maximum idle connection time
+  max_connections: 100       # Maximum connections in pool
+  max_recv_msg_size: 16MB    # Maximum receive message size
+  max_send_msg_size: 16MB    # Maximum send message size
+  enable_reflection: false   # Disable reflection for production
+  keepalive_time: 30s       # Keepalive probe interval
+  keepalive_timeout: 10s    # Keepalive timeout
+```
+
+### Service Discovery
+
+1. **Using etcd**:
+```yaml
+routes:
+  - path: "/users/*"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"
+    load_balancing:
+      driver: "etcd"
+      discoveries:
+        name: "user-service"
+        prefix: "services"
+```
+
+2. **Static Endpoints**:
+```yaml
+routes:
+  - path: "/users/*"
+    protocol: "HTTP"
+    endpoints_protocol: "GRPC"
+    load_balancing:
+      driver: "static"
+      endpoints:
+        - "grpc://user-service-1:50051"
+        - "grpc://user-service-2:50051"
+```
+
+### Error Handling
+
+The gateway automatically converts gRPC status codes to appropriate HTTP status codes:
+
+| gRPC Code | HTTP Status |
+|-----------|-------------|
+| OK | 200 |
+| InvalidArgument | 400 |
+| Unauthenticated | 401 |
+| PermissionDenied | 403 |
+| NotFound | 404 |
+| AlreadyExists | 409 |
+| ResourceExhausted | 429 |
+| Internal | 500 |
+| Unavailable | 503 |
+
+### Best Practices
+
+1. **Connection Management**:
+   - Use the connection pool for better performance
+   - Configure appropriate timeouts
+   - Enable health checks for reliability
+
+2. **Message Sizes**:
+   - Set appropriate message size limits
+   - Use streaming for large data transfers
+
+3. **Security**:
+   - Enable TLS in production
+   - Use authentication middleware
+   - Configure proper CORS settings
+
+4. **Monitoring**:
+   - Enable metrics collection
+   - Use distributed tracing
+   - Monitor connection pool usage

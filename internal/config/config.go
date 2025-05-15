@@ -20,6 +20,8 @@ type Config struct {
 	Metrics  MetricsConfig  `yaml:"metrics"`
 	Tracing  TracingConfig  `yaml:"tracing"`
 	Etcd     EtcdConfig     `yaml:"etcd"`
+	GRPC     GRPCConfig     `yaml:"grpc"`
+	Routes   []Route        `yaml:"routes"`
 }
 
 // ServerConfig contains server configuration

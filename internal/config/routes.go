@@ -159,34 +159,18 @@ func (r *Route) Validate() error {
 
 // LoadRoutes loads route configurations from a YAML file
 func LoadRoutes(path string) (*RouteConfig, error) {
-	var routeConfig RouteConfig
-	var err error
-	var data []byte
-
-	// Development mode: Try reading from filesystem first
-	if os.Getenv("GO_ENV") == "development" {
-		file, err := os.Open("configs/" + path)
-		if err == nil {
-			defer file.Close()
-			decoder := yaml.NewDecoder(file)
-			if err = decoder.Decode(&routeConfig); err == nil {
-				goto VALIDATE_ROUTES
-			}
-		}
-		// Continue to embedded config if file read fails
-	}
-
-	// Production mode: Read from embedded packr box
-	data, err = configBox.Find(path)
+	routesFile, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load routes config (both file and embedded): %w", err)
+		return nil, fmt.Errorf("failed to open routes file: %w", err)
+	}
+	defer routesFile.Close()
+
+	var routeConfig RouteConfig
+	decoder := yaml.NewDecoder(routesFile)
+	if err := decoder.Decode(&routeConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse routes file: %w", err)
 	}
 
-	if err := yaml.Unmarshal(data, &routeConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse embedded routes config: %w", err)
-	}
-
-VALIDATE_ROUTES:
 	// Validate routes
 	for i, route := range routeConfig.Routes {
 		if err := route.Validate(); err != nil {
