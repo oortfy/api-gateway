@@ -41,13 +41,12 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 
 - **Protocol Support**
   - **HTTP Proxying**: Traditional HTTP/HTTPS reverse proxy
-  - **gRPC Support**: Full gRPC support with multiple operation modes:
-    - Pure gRPC proxying (gRPC → gRPC)
-    - Protocol conversion (HTTP ↔ gRPC)
-    - Automatic service discovery via etcd
-    - Support for gRPC reflection
-    - Streaming support
-    - Load balancing for gRPC services
+  - **gRPC Support**: HTTP to gRPC conversion with:
+    - Protocol conversion (HTTP → gRPC)
+    - Connection pooling with automatic health checks
+    - Dynamic service discovery via etcd
+    - Comprehensive error mapping from gRPC to HTTP status codes
+    - Support for middleware (auth, rate limiting, etc.)
 
 ## 📋 Table of Contents
 - [Quick Start](#quick-start)
@@ -640,13 +639,14 @@ Key points:
 
 ## gRPC Support
 
-The API Gateway supports efficient HTTP↔gRPC protocol conversion with the following features:
+The API Gateway supports HTTP to gRPC protocol conversion with the following features:
 
 ### Features
-- **Connection Pooling**: Efficient reuse of gRPC connections
-- **Dynamic Service Discovery**: Automatic service discovery via etcd
-- **Protocol Conversion**: Seamless HTTP↔gRPC conversion
-- **Performance Optimized**: Connection reuse and caching for better performance
+- **Connection Pooling**: Efficient reuse of gRPC connections with automatic health checks
+- **Dynamic Service Discovery**: Optional service discovery via etcd
+- **Protocol Conversion**: HTTP requests are automatically converted to gRPC calls
+- **Performance Optimized**: Connection reuse and efficient handling of gRPC messages
+- **Middleware Support**: All standard middlewares (auth, rate limiting, etc.) work with gRPC routes
 
 ### Configuration Example
 
@@ -655,6 +655,7 @@ routes:
   - path: "/users/*"
     protocol: "HTTP"
     endpoints_protocol: "GRPC"  # Backend is gRPC
+    rpc_server: "/api/user"     # Base path for mapping HTTP routes to gRPC methods
     upstream: "grpc://user-service:50051"
     strip_prefix: true
     timeout: 30
@@ -665,25 +666,11 @@ routes:
         threshold: 5
         timeout: 30
         max_concurrent: 100
-
-  - path: "api.users.v1.UserService/*"
-    protocol: "GRPC"           # Accept gRPC requests
-    endpoints_protocol: "GRPC"  # Backend is gRPC
-    upstream: "grpc://user-service:50051"
-    timeout: 30
-    load_balancing:
-      method: "round_robin"
-      health_check: true
-      driver: "etcd"
-      discoveries:
-        name: "user-service"
-        prefix: "services"
-        fail_limit: 3
 ```
 
 ### Example Usage
 
-1. **HTTP to gRPC**:
+**HTTP to gRPC**:
 ```bash
 # Call gRPC service using HTTP
 curl -X POST http://gateway:8080/users/GetUser \
@@ -700,29 +687,21 @@ curl -X POST http://gateway:8080/users/GetUser \
 }
 ```
 
-2. **Direct gRPC**:
-```go
-// Using standard gRPC client
-conn, err := grpc.Dial("gateway:8080", grpc.WithInsecure())
-client := api.NewUserServiceClient(conn)
-
-resp, err := client.GetUser(context.Background(), &api.GetUserRequest{
-    UserId: "123",
-})
-```
-
 ### Performance Settings
 
 The gRPC proxy is optimized for performance with these default settings:
 ```yaml
 grpc:
-  max_idle_time: 5m          # Maximum idle connection time
-  max_connections: 100       # Maximum connections in pool
-  max_recv_msg_size: 16MB    # Maximum receive message size
-  max_send_msg_size: 16MB    # Maximum send message size
-  enable_reflection: false   # Disable reflection for production
-  keepalive_time: 30s       # Keepalive probe interval
-  keepalive_timeout: 10s    # Keepalive timeout
+  pool:
+    max_idle: 5m          # Maximum idle connection time
+    max_conns: 100        # Maximum connections in pool
+    health_check: true    # Enable health checks
+    check_interval: 30s   # Health check interval
+  retry:
+    max_attempts: 3       # Maximum retry attempts
+    initial_backoff: 100ms # Initial backoff duration
+    max_backoff: 2s       # Maximum backoff duration
+    backoff_multiplier: 2.0 # Backoff multiplier
 ```
 
 ### Service Discovery
@@ -772,20 +751,17 @@ The gateway automatically converts gRPC status codes to appropriate HTTP status 
 ### Best Practices
 
 1. **Connection Management**:
-   - Use the connection pool for better performance
-   - Configure appropriate timeouts
+   - Configure appropriate timeout values
    - Enable health checks for reliability
 
 2. **Message Sizes**:
-   - Set appropriate message size limits
-   - Use streaming for large data transfers
+   - Be mindful of request/response message sizes
+   - Default maximum message size is 16MB
 
 3. **Security**:
-   - Enable TLS in production
-   - Use authentication middleware
+   - Use authentication middleware for protected gRPC services
    - Configure proper CORS settings
 
 4. **Monitoring**:
-   - Enable metrics collection
-   - Use distributed tracing
-   - Monitor connection pool usage
+   - Monitor connection pool metrics
+   - Check health status metrics for backend services
