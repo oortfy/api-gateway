@@ -2,6 +2,7 @@ package grpc_test
 
 import (
 	"context"
+	"net"
 	"testing"
 	"time"
 
@@ -26,7 +27,28 @@ func (m *mockHealthServer) Check(context.Context, *grpc_health_v1.HealthCheckReq
 	return &grpc_health_v1.HealthCheckResponse{Status: status}, nil
 }
 
+func setupMockServer(t *testing.T) (string, func()) {
+	lis, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	server := grpc.NewServer()
+	healthServer := &mockHealthServer{healthy: true}
+	grpc_health_v1.RegisterHealthServer(server, healthServer)
+
+	go server.Serve(lis)
+
+	cleanup := func() {
+		server.Stop()
+		lis.Close()
+	}
+
+	return lis.Addr().String(), cleanup
+}
+
 func TestClientPool(t *testing.T) {
+	serverAddr, cleanup := setupMockServer(t)
+	defer cleanup()
+
 	// Create pool with test configuration
 	pool := grpcpool.NewClientPool(grpcpool.PoolConfig{
 		MaxIdle:       time.Minute,
@@ -37,39 +59,47 @@ func TestClientPool(t *testing.T) {
 	defer pool.Close()
 
 	t.Run("GetConn creates new connection", func(t *testing.T) {
-		ctx := context.Background()
-		conn, err := pool.GetConn(ctx, "localhost:50051")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		conn, err := pool.GetConn(ctx, serverAddr)
 		require.NoError(t, err)
 		assert.NotNil(t, conn)
 	})
 
 	t.Run("GetConn reuses existing connection", func(t *testing.T) {
-		ctx := context.Background()
-		conn1, err := pool.GetConn(ctx, "localhost:50051")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		conn1, err := pool.GetConn(ctx, serverAddr)
 		require.NoError(t, err)
 
-		conn2, err := pool.GetConn(ctx, "localhost:50051")
+		conn2, err := pool.GetConn(ctx, serverAddr)
 		require.NoError(t, err)
 
 		assert.Equal(t, conn1, conn2)
 	})
 
 	t.Run("ReleaseConn marks connection as not in use", func(t *testing.T) {
-		ctx := context.Background()
-		_, err := pool.GetConn(ctx, "localhost:50051")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		_, err := pool.GetConn(ctx, serverAddr)
 		require.NoError(t, err)
 
-		pool.ReleaseConn("localhost:50051")
+		pool.ReleaseConn(serverAddr)
 		// Implementation detail: connection should still be in pool but marked as not in use
 	})
 
 	t.Run("InvokeRPC with retries", func(t *testing.T) {
-		ctx := context.Background()
-		conn, err := pool.GetConn(ctx, "localhost:50051")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		conn, err := pool.GetConn(ctx, serverAddr)
 		require.NoError(t, err)
 
 		err = pool.InvokeRPC(ctx, conn.(*grpc.ClientConn), "/test.Service/Method", nil, nil)
-		// Expected to fail since no real server, but should have attempted retries
+		// Expected to fail since method doesn't exist, but should have attempted retries
 		assert.Error(t, err)
 	})
 }

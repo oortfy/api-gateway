@@ -3,7 +3,6 @@ package grpc_test
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,13 +13,34 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/protobuf/types/known/emptypb"
 
 	"api-gateway/internal/proxy"
 )
 
+func setupTestServer(t *testing.T) (string, func()) {
+	lis, err := net.Listen("tcp", "localhost:0")
+	require.NoError(t, err)
+
+	server := grpc.NewServer()
+	healthServer := &mockHealthServer{healthy: true}
+	grpc_health_v1.RegisterHealthServer(server, healthServer)
+
+	go server.Serve(lis)
+
+	cleanup := func() {
+		server.Stop()
+		lis.Close()
+	}
+
+	return lis.Addr().String(), cleanup
+}
+
 func TestGRPCProxy(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	serverAddr, cleanup := setupTestServer(t)
+	defer cleanup()
 
 	// Create a new proxy instance
 	p := proxy.NewGRPCProxy(time.Minute, 2)
@@ -30,19 +50,18 @@ func TestGRPCProxy(t *testing.T) {
 		w := httptest.NewRecorder()
 		c, _ := gin.CreateTestContext(w)
 
-		// Create a test request with JSON body
-		body := map[string]interface{}{
-			"name": "test",
-		}
-		jsonBody, _ := json.Marshal(body)
-		c.Request = httptest.NewRequest("POST", "/test", bytes.NewBuffer(jsonBody))
+		// Create a test request with empty body (health check request is empty)
+		c.Request = httptest.NewRequest("POST", "/test", bytes.NewBuffer([]byte("{}")))
 		c.Request.Header.Set("Content-Type", "application/json")
 
-		// Call proxy handler
-		p.ProxyHandler(c, "localhost:50051", "test.Service/Method")
+		// Call proxy handler with mock server address
+		p.ProxyHandler(c, serverAddr, "grpc.health.v1.Health/Check")
 
-		// Since we don't have a real gRPC server, we expect an error response
-		assert.Equal(t, http.StatusServiceUnavailable, w.Code)
+		// Should succeed since we have a mock health server
+		assert.Equal(t, http.StatusOK, w.Code)
+		if w.Code != http.StatusOK {
+			t.Logf("Response body: %s", w.Body.String())
+		}
 	})
 
 	t.Run("ProxyHandler handles invalid method", func(t *testing.T) {
@@ -51,7 +70,7 @@ func TestGRPCProxy(t *testing.T) {
 		c.Request = httptest.NewRequest("POST", "/test", nil)
 
 		// Call with invalid method name
-		p.ProxyHandler(c, "localhost:50051", "invalid/method/name")
+		p.ProxyHandler(c, serverAddr, "invalid/method/name")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
@@ -64,7 +83,7 @@ func TestGRPCProxy(t *testing.T) {
 		c.Request = httptest.NewRequest("POST", "/test", bytes.NewBufferString("{invalid json}"))
 		c.Request.Header.Set("Content-Type", "application/json")
 
-		p.ProxyHandler(c, "localhost:50051", "test.Service/Method")
+		p.ProxyHandler(c, serverAddr, "grpc.health.v1.Health/Check")
 
 		assert.Equal(t, http.StatusBadRequest, w.Code)
 	})
