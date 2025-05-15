@@ -23,7 +23,7 @@ func getEnvOrDefault(key, defaultValue string) string {
 
 func main() {
 	// Load configuration
-	cfg, err := config.LoadConfig("configs/config.yaml")
+	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)
 		os.Exit(1)
@@ -42,7 +42,7 @@ func main() {
 			Thereafter: 100,
 		},
 		Fields: map[string]string{
-			"service":     "api-gateway",
+			"service":     getEnvOrDefault("SERVICE", "api-gateway"),
 			"environment": getEnvOrDefault("ENV", "production"),
 			"version":     getEnvOrDefault("VERSION", "1.0.0"),
 		},
@@ -59,7 +59,7 @@ func main() {
 	log := logger.NewLogger(logConfig)
 
 	// Load route configuration
-	routes, err := config.LoadRoutes("configs/routes.yaml")
+	routes, err := config.LoadRoutes("routes.yaml")
 	if err != nil {
 		log.Fatal("Failed to load route config",
 			logger.Error(err),
