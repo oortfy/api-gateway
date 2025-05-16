@@ -55,12 +55,22 @@ spec:
         stage('Setup') {
             steps {
                 container('golang') {
-                    // Install GoReleaser
-                    sh 'go install github.com/goreleaser/goreleaser@latest'
+                    // Install dependencies
+                    sh '''
+                    # Install GoReleaser
+                    go install github.com/goreleaser/goreleaser@latest
                     
-                    // Download dependencies
-                    sh 'go mod download'
-                    sh 'go mod tidy'
+                    # Install required dependencies
+                    go get -v github.com/golang-jwt/jwt/v4
+                    go get -v gopkg.in/yaml.v3
+                    go get -v github.com/ip2location/ip2location-go/v9
+                    go get -v github.com/stretchr/testify
+                    
+                    # Download and verify all dependencies
+                    go mod download
+                    go mod verify
+                    go mod tidy
+                    '''
                 }
             }
         }

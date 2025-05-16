@@ -53,9 +53,20 @@ spec:
         stage('Lint') {
             steps {
                 container('golang') {
-                    // Install golangci-lint
-                    sh 'curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2'
-                    sh '$(go env GOPATH)/bin/golangci-lint run --timeout=5m'
+                    // Install required dependencies
+                    sh '''
+                    # Install golangci-lint
+                    curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin v1.54.2
+                    
+                    # Install required dependencies
+                    go get -v github.com/golang-jwt/jwt/v4
+                    go get -v gopkg.in/yaml.v3
+                    go get -v github.com/ip2location/ip2location-go/v9
+                    go get -v github.com/stretchr/testify
+                    
+                    # Run lint with VCS disabled and more verbose output
+                    $(go env GOPATH)/bin/golangci-lint run --timeout=5m --build-tags=mocks --verbose --fix -e typecheck
+                    '''
                 }
             }
         }
