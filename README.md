@@ -198,6 +198,40 @@ curl "http://localhost:8080/api/users?api_key=your-api-key"
 - **Logging**: Structured JSON logs
 - **Health Checks**: `/health` endpoint
 
+## 🔄 CI/CD
+
+This project uses GitHub Actions for continuous integration and deployment:
+
+- **Go Test**: Runs linting and all tests with coverage reporting
+  - Component-specific test coverage for proxy, handlers, auth, middleware, and service discovery
+  - Race condition detection
+  - Coverage reports uploaded as artifacts
+
+- **Go Build**: Verifies that the application builds correctly
+  - Builds the application binary
+  - Builds the Docker image
+
+- **Release**: Triggered when a tag is pushed
+  - Creates GitHub releases with built binaries for multiple platforms
+  - Builds and pushes Docker images to GitHub Container Registry with appropriate version tags
+
+To run the tests locally:
+```bash
+# Run all tests
+make test
+
+# Run specific component tests
+make test-grpc
+make test-proxy 
+make test-server
+make test-auth
+make test-middleware
+make test-discovery
+
+# Generate coverage reports
+make test-component-coverage
+```
+
 ## gRPC Support
 
 The API Gateway includes basic gRPC functionality:
