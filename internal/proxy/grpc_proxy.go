@@ -1,104 +1,109 @@
 package proxy
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"net/http"
 	"strings"
 	"sync"
 	"time"
 
-	"github.com/gin-gonic/gin"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
-	"google.golang.org/protobuf/encoding/protojson"
+	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/reflect/protoregistry"
 
 	grpcpool "api-gateway/pkg/grpc"
+	"api-gateway/pkg/logger"
 )
 
 // GRPCProxy handles gRPC proxy operations
 type GRPCProxy struct {
 	pool        *grpcpool.ClientPool
 	methodCache sync.Map // cache for method descriptors
+	logger      logger.Logger
 }
 
+// Add a noopLogger type for use when no logger is provided
+type noopLogger struct{}
+
+func (n *noopLogger) Debug(msg string, args ...logger.Field)  {}
+func (n *noopLogger) Info(msg string, args ...logger.Field)   {}
+func (n *noopLogger) Warn(msg string, args ...logger.Field)   {}
+func (n *noopLogger) Error(msg string, args ...logger.Field)  {}
+func (n *noopLogger) Fatal(msg string, args ...logger.Field)  {}
+func (n *noopLogger) With(args ...logger.Field) logger.Logger { return n }
+
 // NewGRPCProxy creates a new gRPC proxy instance
-func NewGRPCProxy(maxIdle time.Duration, maxConns int) *GRPCProxy {
+func NewGRPCProxy(maxIdle time.Duration, maxConns int, log logger.Logger) *GRPCProxy {
+	// Use noopLogger if no logger is provided
+	if log == nil {
+		log = &noopLogger{}
+	}
+
 	return &GRPCProxy{
 		pool: grpcpool.NewClientPool(grpcpool.PoolConfig{
-			MaxIdle:  maxIdle,
-			MaxConns: maxConns,
+			MaxIdle:       maxIdle,
+			MaxConns:      maxConns,
+			HealthCheck:   true,
+			CheckInterval: 30 * time.Second,
 		}),
+		logger: log,
 	}
 }
 
-// ProxyHandler handles HTTP to gRPC conversion
-func (p *GRPCProxy) ProxyHandler(c *gin.Context, target string, fullMethodName string) {
-	ctx := c.Request.Context()
-
+// ForwardGRPC handles direct gRPC to gRPC forwarding
+func (p *GRPCProxy) ForwardGRPC(
+	ctx context.Context,
+	fullMethodName string,
+	target string,
+	requestMessage proto.Message,
+) (proto.Message, metadata.MD, error) {
 	// Get connection from pool
 	conn, err := p.pool.GetConn(ctx, target)
 	if err != nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": fmt.Sprintf("failed to connect to gRPC service: %v", err)})
-		return
+		p.logger.Error("Failed to connect to gRPC service",
+			logger.String("target", target),
+			logger.Error(err),
+		)
+		return nil, nil, status.Errorf(codes.Unavailable, "failed to connect to backend: %v", err)
 	}
 	defer p.pool.ReleaseConn(target)
 
 	// Get method descriptor from cache or create new
 	methodDesc, err := p.getMethodDescriptor(fullMethodName)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid gRPC method: %v", err)})
-		return
+		p.logger.Error("Invalid gRPC method",
+			logger.String("method", fullMethodName),
+			logger.Error(err),
+		)
+		return nil, nil, status.Errorf(codes.InvalidArgument, "invalid gRPC method: %v", err)
 	}
 
-	// Create input/output messages using protoreflect
-	inputMsg := dynamicMessage(methodDesc.Input())
+	// Create output message
 	outputMsg := dynamicMessage(methodDesc.Output())
-
-	// Parse request body into input message
-	if c.Request.Body != nil {
-		decoder := json.NewDecoder(c.Request.Body)
-		jsonData := make(map[string]interface{})
-		if err := decoder.Decode(&jsonData); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
-			return
-		}
-
-		// Convert JSON to proto message
-		jsonBytes, _ := json.Marshal(jsonData)
-		if err := protojson.Unmarshal(jsonBytes, inputMsg); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "failed to parse request body"})
-			return
-		}
+	if outputMsg == nil {
+		p.logger.Error("Failed to create output message",
+			logger.String("method", fullMethodName),
+		)
+		return nil, nil, status.Error(codes.Internal, "failed to create output message")
 	}
 
-	// Prepare metadata
-	md := metadata.New(nil)
-	for k, v := range c.Request.Header {
-		md.Set(strings.ToLower(k), v...)
-	}
-	ctx = metadata.NewOutgoingContext(ctx, md)
-
-	// Make gRPC call
-	if err := conn.Invoke(ctx, fullMethodName, inputMsg, outputMsg); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("gRPC call failed: %v", err)})
-		return
-	}
-
-	// Convert response to JSON
-	marshaler := protojson.MarshalOptions{
-		UseProtoNames:   true,
-		EmitUnpopulated: true,
-	}
-	jsonBytes, err := marshaler.Marshal(outputMsg)
+	// Make gRPC call with metadata
+	var header metadata.MD
+	err = conn.Invoke(ctx, fullMethodName, requestMessage, outputMsg, grpc.Header(&header))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to marshal response"})
-		return
+		p.logger.Error("gRPC call failed",
+			logger.String("method", fullMethodName),
+			logger.String("target", target),
+			logger.Error(err),
+		)
+		return nil, nil, err // preserve original gRPC error
 	}
 
-	c.Data(http.StatusOK, "application/json", jsonBytes)
+	return outputMsg, header, nil
 }
 
 // dynamicMessage creates a new dynamic proto message from a descriptor

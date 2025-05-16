@@ -172,8 +172,13 @@ func isSensitiveHeader(header string) bool {
 
 // Shutdown cleanly shuts down the tracer provider
 func (t *TracingMiddleware) Shutdown(ctx context.Context) error {
-	if t.config.Enabled && t.initialized && t.tp != nil {
-		return t.tp.Shutdown(ctx)
+	if !t.config.Enabled || !t.initialized {
+		return nil
 	}
-	return nil
+
+	if t.tp == nil {
+		return nil
+	}
+
+	return t.tp.Shutdown(ctx)
 }

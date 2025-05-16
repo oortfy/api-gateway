@@ -5,21 +5,29 @@ import (
 	"api-gateway/pkg/logger"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
-// mockLogger for testing
+// setupMockLogger creates a test logger
+func setupMockLogger() logger.Logger {
+	return &mockLogger{}
+}
+
+// mockLogger implements the logger.Logger interface for testing
 type mockLogger struct{}
 
-func (m *mockLogger) Debug(msg string, fields ...logger.Field)  {}
-func (m *mockLogger) Info(msg string, fields ...logger.Field)   {}
-func (m *mockLogger) Warn(msg string, fields ...logger.Field)   {}
-func (m *mockLogger) Error(msg string, fields ...logger.Field)  {}
-func (m *mockLogger) Fatal(msg string, fields ...logger.Field)  {}
-func (m *mockLogger) With(fields ...logger.Field) logger.Logger { return m }
+func (m *mockLogger) Debug(msg string, args ...logger.Field) {}
+func (m *mockLogger) Info(msg string, args ...logger.Field)  {}
+func (m *mockLogger) Warn(msg string, args ...logger.Field)  {}
+func (m *mockLogger) Error(msg string, args ...logger.Field) {}
+func (m *mockLogger) Fatal(msg string, args ...logger.Field) {}
+func (m *mockLogger) With(args ...logger.Field) logger.Logger {
+	return m
+}
 
 func TestNewHTTPProxy(t *testing.T) {
 	cfg := &config.Config{}
@@ -243,4 +251,87 @@ func TestProxyRequestWithHeaders(t *testing.T) {
 		assert.Equal(t, "Bearer header-jwt-token", resp.Header.Get("X-Received-Auth"))
 		assert.Equal(t, "header-api-key", resp.Header.Get("X-Received-API-Key"))
 	})
+}
+
+// TestHTTPProxy_parseURLs tests the parseURLs function
+func TestHTTPProxy_parseURLs(t *testing.T) {
+	// Create a mock logger
+	mockLogger := setupMockLogger()
+
+	// Create a proxy
+	proxy := NewHTTPProxy(&config.Config{}, &config.RouteConfig{}, mockLogger)
+
+	// Test cases
+	testCases := []struct {
+		name          string
+		protocol      string
+		addresses     []string
+		expectedCount int
+		expectError   bool
+	}{
+		{
+			name:          "empty_addresses",
+			protocol:      "http",
+			addresses:     []string{},
+			expectedCount: 0,
+			expectError:   false,
+		},
+		{
+			name:          "valid_http_addresses",
+			protocol:      "http",
+			addresses:     []string{"localhost:8080", "127.0.0.1:8081"},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name:          "valid_https_addresses",
+			protocol:      "https",
+			addresses:     []string{"localhost:8443", "127.0.0.1:8444"},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name:          "addresses_with_protocol",
+			protocol:      "http",
+			addresses:     []string{"http://localhost:8080", "https://127.0.0.1:8443"},
+			expectedCount: 2,
+			expectError:   false,
+		},
+		{
+			name:          "invalid_addresses",
+			protocol:      "http",
+			addresses:     []string{"://invalid"},
+			expectedCount: 0,
+			expectError:   true,
+		},
+		{
+			name:          "mixed_valid_and_invalid",
+			protocol:      "http",
+			addresses:     []string{"localhost:8080", "://invalid"},
+			expectedCount: 0,
+			expectError:   true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			urls, err := proxy.parseURLs(tc.protocol, tc.addresses)
+
+			if tc.expectError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedCount, len(urls))
+
+				// Check that the protocol was applied correctly
+				for _, u := range urls {
+					if strings.HasPrefix(tc.addresses[0], "http://") || strings.HasPrefix(tc.addresses[0], "https://") {
+						// If the address already specifies a protocol, it should be preserved
+						continue
+					}
+					assert.Equal(t, tc.protocol, u.Scheme)
+				}
+			}
+		})
+	}
 }

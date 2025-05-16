@@ -376,3 +376,57 @@ func TestValidateToken(t *testing.T) {
 		})
 	}
 }
+
+// TestCheckRole tests the checkRole function
+func TestCheckRole(t *testing.T) {
+	svc := &AuthService{log: &mockLogger{}}
+
+	tests := []struct {
+		name         string
+		role         string
+		allowedRoles []string
+		wantResult   bool
+		wantErr      error
+	}{
+		{
+			name:         "no allowed roles",
+			role:         "user",
+			allowedRoles: []string{},
+			wantResult:   true,
+			wantErr:      nil,
+		},
+		{
+			name:         "any role wildcard",
+			role:         "user",
+			allowedRoles: []string{"any"},
+			wantResult:   true,
+			wantErr:      nil,
+		},
+		{
+			name:         "matching role",
+			role:         "admin",
+			allowedRoles: []string{"user", "admin", "guest"},
+			wantResult:   true,
+			wantErr:      nil,
+		},
+		{
+			name:         "non-matching role",
+			role:         "guest",
+			allowedRoles: []string{"user", "admin"},
+			wantResult:   false,
+			wantErr:      ErrForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := svc.checkRole(tt.role, tt.allowedRoles)
+			assert.Equal(t, tt.wantResult, result)
+			if tt.wantErr != nil {
+				assert.ErrorIs(t, err, tt.wantErr)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}

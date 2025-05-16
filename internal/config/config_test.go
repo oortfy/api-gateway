@@ -148,3 +148,116 @@ server:
 
 	assert.Equal(t, ":8080", config.Server.Address)
 }
+
+func TestParseConfig(t *testing.T) {
+	// Test valid config
+	validConfig := `
+server:
+  address: ":8080"
+auth:
+  jwt_secret: test-secret
+logging:
+  level: debug
+`
+	cfg, err := parseConfig([]byte(validConfig))
+	require.NoError(t, err)
+	assert.Equal(t, ":8080", cfg.Server.Address)
+	assert.Equal(t, "test-secret", cfg.Auth.JWTSecret)
+	assert.Equal(t, "debug", cfg.Logging.Level)
+
+	// Test invalid YAML
+	invalidConfig := `
+server:
+  address: ":8080"
+auth:
+  jwt_secret: "unclosed string
+`
+	_, err = parseConfig([]byte(invalidConfig))
+	assert.Error(t, err)
+}
+
+func TestSetConfigDefaults(t *testing.T) {
+	// Test with empty config to check all defaults
+	emptyConfig := &Config{}
+	setConfigDefaults(emptyConfig)
+
+	// Check server defaults
+	assert.Equal(t, 30, emptyConfig.Server.ReadTimeout)
+	assert.Equal(t, 30, emptyConfig.Server.WriteTimeout)
+	assert.Equal(t, 120, emptyConfig.Server.IdleTimeout)
+	assert.Equal(t, 1<<20, emptyConfig.Server.MaxHeaderBytes)
+
+	// Check auth defaults
+	assert.Equal(t, "Authorization", emptyConfig.Auth.JWTHeader)
+	assert.Equal(t, "X-API-Auth-Token", emptyConfig.Auth.APIKeyHeader)
+
+	// Check cache defaults
+	assert.Equal(t, 60, emptyConfig.Cache.DefaultTTL)
+	assert.Equal(t, 3600, emptyConfig.Cache.MaxTTL)
+	assert.Equal(t, 1000, emptyConfig.Cache.MaxSize)
+	assert.Equal(t, []string{"Accept", "Accept-Encoding"}, emptyConfig.Cache.VaryHeaders)
+
+	// Check CORS defaults
+	assert.Equal(t, []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}, emptyConfig.Cors.AllowedMethods)
+	assert.Contains(t, emptyConfig.Cors.AllowedHeaders, "Authorization")
+	assert.Equal(t, 86400, emptyConfig.Cors.MaxAge)
+
+	// Check security defaults
+	assert.Equal(t, 31536000, emptyConfig.Security.HSTSMaxAge)
+	assert.Equal(t, int64(10<<20), emptyConfig.Security.MaxBodySize)
+
+	// Check metrics defaults
+	assert.Equal(t, "/metrics", emptyConfig.Metrics.Endpoint)
+
+	// Check tracing defaults
+	assert.Equal(t, "jaeger", emptyConfig.Tracing.Provider)
+	assert.Equal(t, "api-gateway", emptyConfig.Tracing.ServiceName)
+	assert.Equal(t, 0.1, emptyConfig.Tracing.SampleRate)
+
+	// Test with some values already set
+	configWithValues := &Config{
+		Server: ServerConfig{
+			ReadTimeout: 60,
+		},
+		Auth: AuthConfig{
+			JWTHeader: "X-JWT-Token",
+		},
+		Cache: CacheConfig{
+			DefaultTTL: 120,
+		},
+	}
+	setConfigDefaults(configWithValues)
+
+	// Check that existing values are preserved
+	assert.Equal(t, 60, configWithValues.Server.ReadTimeout)
+	assert.Equal(t, "X-JWT-Token", configWithValues.Auth.JWTHeader)
+	assert.Equal(t, 120, configWithValues.Cache.DefaultTTL)
+
+	// Check that unset values got defaults
+	assert.Equal(t, 30, configWithValues.Server.WriteTimeout)
+	assert.Equal(t, "X-API-Auth-Token", configWithValues.Auth.APIKeyHeader)
+}
+
+func TestReplaceEnvVars(t *testing.T) {
+	// Set some environment variables for testing
+	os.Setenv("TEST_HOST", "localhost")
+	os.Setenv("TEST_PORT", "8080")
+	defer os.Unsetenv("TEST_HOST")
+	defer os.Unsetenv("TEST_PORT")
+
+	// Test config with env vars
+	configWithEnvVars := `
+server:
+  address: "${TEST_HOST}:${TEST_PORT}"
+auth:
+  jwt_secret: "${TEST_SECRET:-default-secret}"
+`
+
+	replacedConfig := replaceEnvVars([]byte(configWithEnvVars))
+
+	// Check that environment variables were replaced
+	assert.Contains(t, string(replacedConfig), "localhost:8080")
+
+	// TEST_SECRET is not set, so it should remain as is (we don't have full templating)
+	assert.Contains(t, string(replacedConfig), "${TEST_SECRET:-default-secret}")
+}

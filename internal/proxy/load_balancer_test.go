@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"api-gateway/internal/config"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -261,4 +262,192 @@ func TestGetServiceDiscoveries(t *testing.T) {
 
 	result := lb.GetServiceDiscoveries()
 	assert.Equal(t, discoveries, result)
+}
+
+// TestLoadBalancer_SetHealthyEndpoints tests the SetHealthyEndpoints method
+func TestLoadBalancer_SetHealthyEndpoints(t *testing.T) {
+	// Create mock logger
+	log := &mockLogger{}
+
+	// Create a load balancer with initial endpoints
+	config := &config.LoadBalancingConfig{
+		Method:      "round_robin",
+		HealthCheck: false,
+		Endpoints:   []string{"http://endpoint1.example.com", "http://endpoint2.example.com"},
+	}
+
+	lb, err := NewLoadBalancer(config, log)
+	require.NoError(t, err)
+	require.NotNil(t, lb)
+
+	// Initial endpoints check
+	initialEndpoints := lb.endpoints
+	require.Equal(t, 2, len(initialEndpoints))
+
+	// Create new endpoints
+	newEndpoint1, _ := url.Parse("http://new1.example.com")
+	newEndpoint2, _ := url.Parse("http://new2.example.com")
+	newEndpoint3, _ := url.Parse("http://new3.example.com")
+	newEndpoints := []*url.URL{newEndpoint1, newEndpoint2, newEndpoint3}
+
+	// Set new endpoints
+	result := lb.SetHealthyEndpoints(newEndpoints)
+	assert.True(t, result)
+
+	// Check that endpoints were updated
+	assert.Equal(t, 3, len(lb.endpoints))
+	assert.Contains(t, lb.endpoints, newEndpoint1)
+	assert.Contains(t, lb.endpoints, newEndpoint2)
+	assert.Contains(t, lb.endpoints, newEndpoint3)
+}
+
+// TestLoadBalancer_GetDriver tests the GetDriver method
+func TestLoadBalancer_GetDriver(t *testing.T) {
+	// Create mock logger
+	log := &mockLogger{}
+
+	// Test different driver types
+	testCases := []struct {
+		name       string
+		driverType string
+	}{
+		{
+			name:       "static_driver",
+			driverType: "static",
+		},
+		{
+			name:       "etcd_driver",
+			driverType: "etcd",
+		},
+		{
+			name:       "consul_driver",
+			driverType: "consul",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			config := &config.LoadBalancingConfig{
+				Method:      "round_robin",
+				Driver:      tc.driverType,
+				HealthCheck: false,
+				Endpoints:   []string{"http://endpoint.example.com"},
+			}
+
+			lb, err := NewLoadBalancer(config, log)
+			require.NoError(t, err)
+			require.NotNil(t, lb)
+
+			driver := lb.GetDriver()
+			assert.Equal(t, tc.driverType, driver)
+		})
+	}
+}
+
+// TestLoadBalancer_GetServiceDiscoveries tests the GetServiceDiscoveries method
+func TestLoadBalancer_GetServiceDiscoveries(t *testing.T) {
+	// Create mock logger
+	log := &mockLogger{}
+
+	// Create a discoveries configuration
+	discoveries := &config.Discoveries{
+		Name:      "test-service",
+		Prefix:    "/services/",
+		FailLimit: 3,
+	}
+
+	// Create load balancer config with discoveries
+	config := &config.LoadBalancingConfig{
+		Method:      "round_robin",
+		Driver:      "etcd",
+		HealthCheck: false,
+		Endpoints:   []string{"http://endpoint.example.com"},
+		Discoveries: discoveries,
+	}
+
+	lb, err := NewLoadBalancer(config, log)
+	require.NoError(t, err)
+	require.NotNil(t, lb)
+
+	// Get the discoveries config
+	result := lb.GetServiceDiscoveries()
+	assert.Equal(t, discoveries, result)
+	assert.Equal(t, "test-service", result.Name)
+	assert.Equal(t, "/services/", result.Prefix)
+	assert.Equal(t, 3, result.FailLimit)
+}
+
+// TestLoadBalancer_CheckEndpointHealth tests the checkEndpointHealth method
+func TestLoadBalancer_CheckEndpointHealth(t *testing.T) {
+	// Create a test server that simulates health checks
+	healthyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/health" {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("OK"))
+		} else {
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer healthyServer.Close()
+
+	// Create a test server that simulates unhealthy responses
+	unhealthyServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Internal Server Error"))
+	}))
+	defer unhealthyServer.Close()
+
+	// Create a mock logger to capture logs
+	log := &mockLogger{}
+
+	// Create a custom health check config
+	healthCheckConfig := &config.HealthCheckConfig{
+		Path:               "/health",
+		Interval:           1,
+		Timeout:            1,
+		HealthyThreshold:   2,
+		UnhealthyThreshold: 2,
+	}
+
+	// Create a load balancer with both healthy and unhealthy endpoints
+	healthyURL, _ := url.Parse(healthyServer.URL)
+	unhealthyURL, _ := url.Parse(unhealthyServer.URL)
+	invalidURL, _ := url.Parse("http://invalid-host.local:12345")
+
+	config := &config.LoadBalancingConfig{
+		Method:            "round_robin",
+		HealthCheck:       true,
+		HealthCheckConfig: healthCheckConfig,
+	}
+
+	lb := &LoadBalancer{
+		config:    config,
+		endpoints: []*url.URL{healthyURL, unhealthyURL, invalidURL},
+		healthMap: make(map[string]bool),
+		log:       log,
+	}
+
+	// Test the health check on the healthy endpoint
+	lb.checkEndpointHealth(healthyURL)
+	assert.True(t, lb.healthMap[healthyURL.String()])
+
+	// Test the health check on the unhealthy endpoint
+	lb.checkEndpointHealth(unhealthyURL)
+	assert.False(t, lb.healthMap[unhealthyURL.String()])
+
+	// Test the health check on an invalid endpoint (connection error)
+	lb.checkEndpointHealth(invalidURL)
+	assert.False(t, lb.healthMap[invalidURL.String()])
+}
+
+// TestLoadBalancer_GetErrorMessage tests the getErrorMessage function
+func TestLoadBalancer_GetErrorMessage(t *testing.T) {
+	// Test with nil error
+	msg := getErrorMessage(nil)
+	assert.Equal(t, "unknown error", msg)
+
+	// Test with actual error
+	err := fmt.Errorf("test error")
+	msg = getErrorMessage(err)
+	assert.Equal(t, "test error", msg)
 }

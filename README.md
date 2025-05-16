@@ -17,48 +17,32 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 - **Traffic Management**
   - Rate limiting (per route, per client)
   - Circuit breaker
-  - Request retries with backoff
-  - Load balancing (static, service discovery)
   - Response caching (configurable per route)
+  - Load balancing (static, service discovery via etcd)
 
 - **Security**
   - API Key and JWT authentication (header or query param)
   - CORS configuration
-  - TLS support
-  - Header security (HSTS, XSS, etc.)
 
 - **Observability**
   - Prometheus metrics
-  - Distributed tracing (Jaeger, OpenTelemetry)
   - Structured JSON logging
   - Health checks
-  - Optional IP geolocation (IP2Location LITE)
-
-- **Developer Experience**
-  - 📚 **Dynamic OpenAPI/Swagger documentation** auto-generated from your route config
-  - Hot-reload ready (config-driven)
-  - Easy local development and testing
 
 - **Protocol Support**
   - **HTTP Proxying**: Traditional HTTP/HTTPS reverse proxy
-  - **gRPC Support**: HTTP to gRPC conversion with:
-    - Protocol conversion (HTTP → gRPC)
-    - Connection pooling with automatic health checks
-    - Dynamic service discovery via etcd
-    - Comprehensive error mapping from gRPC to HTTP status codes
-    - Support for middleware (auth, rate limiting, etc.)
+  - **gRPC Support**: Basic gRPC routing capabilities
+    - gRPC server implementation
+    - Connection pooling
+    - Unary method support
 
 ## 📋 Table of Contents
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Route Examples](#route-examples)
 - [Authentication](#authentication)
-- [Traffic Management](#traffic-management)
-- [Observability](#observability)
-- [Client IP & Geolocation](#client-ip--geolocation)
-- [API Documentation](#api-documentation)
+- [gRPC Support](#grpc-support)
 - [Development](#development)
-- [Contributing](#contributing)
 - [License](#license)
 
 ---
@@ -68,7 +52,6 @@ A high-performance, modular, and configuration-driven API Gateway built in Go, d
 ### Prerequisites
 - Go 1.20+
 - Docker & Docker Compose
-- Make (optional)
 
 ### Installation
 ```bash
@@ -88,35 +71,27 @@ make build
 1. Configure your routes in `configs/routes.yaml`:
 ```yaml
 routes:
-  - path: "/auth/*"
-    upstream: "http://auth-service:8000"
+  - path: "/api/users/*"
+    upstream: "http://users-service:8000"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
-    strip_prefix: false
-    timeout: 120
+    strip_prefix: true
+    timeout: 30
     middlewares:
-      require_auth: false
-    rate_limit:
-      requests: 100000
-      period: "minute"
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
-      retry_policy:
-        enabled: true
-        attempts: 3
-        per_try_timeout: 5
-        retry_on: ["connection_error", "server_error"]
+      require_auth: true
+      rate_limit:
+        requests: 100
+        period: "minute"
 ```
+
 2. Start the gateway:
 ```bash
 docker-compose up -d
 ```
+
 3. Make a request:
 ```bash
-curl -H "x-api-key: your-api-key" http://localhost:8080/users
+curl -H "x-api-key: your-api-key" http://localhost:8080/api/users
 ```
 
 ---
@@ -125,246 +100,48 @@ curl -H "x-api-key: your-api-key" http://localhost:8080/users
 
 ### Main Files
 - `config.yaml`: Global gateway configuration
-- `routes.yaml`: Route-specific configuration (see [Route Examples](#route-examples))
+- `routes.yaml`: Route-specific configuration
 
-### Global Configuration (`config.yaml`)
+### Example Route Configurations
 
-| Section    | Key                      | Description                                 | Default                        |
-|------------|--------------------------|---------------------------------------------|---------------------------------|
-| **server** | `address`                | Server listening address                    | ":8080"                       |
-|            | `read_timeout`           | Read timeout in seconds                     | 30                              |
-|            | `write_timeout`          | Write timeout in seconds                    | 30                              |
-|            | `idle_timeout`           | Idle connection timeout                     | 120                             |
-|            | `max_header_bytes`       | Maximum header size                         | 1048576                         |
-|            | `enable_http2`           | Enable HTTP/2 support                       | true                            |
-|            | `enable_compression`     | Enable response compression                 | true                            |
-| **auth**   | `jwt_secret`             | JWT signing secret                          | ${JWT_SECRET}                   |
-|            | `jwt_expiry_hours`       | JWT token expiry in hours                   | 24                              |
-|            | `api_key_validation_url` | API key validation endpoint                 | ${API_VALIDATION_URL}           |
-|            | `api_key_header`         | API key header name                         | "x-api-key"                    |
-| **logging**| `level`                  | Log level (debug, info, warn, error)        | info                            |
-|            | `format`                 | Log format (json, console)                  | json                            |
-|            | `enable_access_log`      | Enable access logging                       | true                            |
-|            | `production_mode`        | Enable production logging                   | true                            |
-|            | `stacktrace_level`       | Level for stacktrace capture                | error                           |
-| **security**| `tls.enabled`           | Enable TLS                                  | false                           |
-|            | `tls.cert_file`          | TLS certificate path                        | "/certs/server.crt"            |
-|            | `tls.key_file`           | TLS key path                                | "/certs/server.key"            |
-|            | `enable_xss_protection`  | Enable XSS protection                       | true                            |
-|            | `enable_frame_deny`      | Enable clickjacking protection              | true                            |
-|            | `max_body_size`          | Maximum request body size                   | 10485760                        |
-| **cache**  | `enabled`                | Enable response caching                     | true                            |
-|            | `default_ttl`            | Default cache TTL in seconds                | 60                              |
-|            | `max_ttl`                | Maximum cache TTL                           | 3600                            |
-|            | `max_size`               | Maximum cache entries                       | 1000                            |
-| **tracing**| `enabled`                | Enable distributed tracing                  | true                            |
-|            | `provider`               | Tracing provider (jaeger)                   | "jaeger"                       |
-|            | `endpoint`               | Jaeger collector endpoint                   | http://jaeger:14268/api/traces  |
-|            | `service_name`           | Service name in traces                      | "api-gateway"                  |
-|            | `sample_rate`            | Trace sampling rate                         | 0.1                             |
-| **metrics**| `enabled`                | Enable Prometheus metrics                   | true                            |
-|            | `endpoint`               | Metrics endpoint                            | "/metrics"                     |
-|            | `include_system`         | Include system metrics                      | true                            |
-
-#### Environment Variables
-
-| Variable              | Description                  | Default                                 |
-|-----------------------|------------------------------|-----------------------------------------|
-| `LOG_LEVEL`           | Logging level                | info                                    |
-| `LOG_FORMAT`          | Log format                   | json                                    |
-| `JWT_SECRET`          | JWT signing secret           | required                                |
-| `API_VALIDATION_URL`  | API key validation URL       | required                                |
-| `TRACING_ENDPOINT`    | Jaeger collector endpoint    | http://jaeger:14268/api/traces          |
-| `ENV`                 | Environment name             | production                              |
-
-### Route Configuration (`routes.yaml`)
-
-| Section           | Key                        | Description                        | Example                        |
-|-------------------|---------------------------|------------------------------------|--------------------------------|
-| **Basic Route**   | `path`                    | Route path pattern                 | "/api/v1/users"               |
-|                   | `methods`                 | Allowed HTTP methods               | ["GET", "POST"]               |
-|                   | `upstream`                | Backend service URL                | "http://user-service:8080"    |
-|                   | `protocol`                | Require Protocol                   | HTTP, SOCKET                   |
-|                   | `strip_prefix`            | Remove path prefix                 | true                           |
-| **Middlewares**   | `middlewares.require_auth` | Require authentication             | true                           |
-|                   | `middlewares.rate_limit`   | Per-route rate limiting config     | see below                      |
-|                   | `middlewares.cache`        | Per-route cache config             | see below                      |
-|                   | `middlewares.circuit_breaker`| Per-route circuit breaker config | see below                      |
-|                   | `middlewares.retry`        | Per-route retry config             | see below                      |
-| **Load Balancing**| `method`                  | Load balancing algorithm           | "round_robin"                 |
-|                   | `health_check`            | Enable health checks               | true                           |
-|                   | `driver`                  | Where to obtain endpoints          | "static", "etcd"              |
-|                   | `discoveries.name`        | service discovery name             | "myServers"                   |
-|                   | `discoveries.prefix`      | service discovery prefix           | "services"                    |
-|                   | `discoveries.fail_limit`  | Unable to obtain service address retry times | 3                  |
-|                   | `endpoints`               | List of backend endpoints          | ["http://service:8080"]       |
-|                   | `health_check_config.path`| Health check endpoint              | "/health"                     |
-|                   | `health_check_config.interval`| Check interval in seconds       | 10                             |
-
-#### Middleware Config Examples
-
-- **Rate Limiting**
-```yaml
-middlewares:
-  rate_limit:
-    requests: 100
-    period: "minute"
-```
-
-- **Caching**
-```yaml
-middlewares:
-  cache:
-    enabled: true
-    ttl: 300
-    cache_authenticated: false
-```
-
-- **Circuit Breaker**
-```yaml
-middlewares:
-  circuit_breaker:
-    enabled: true
-    threshold: 5
-    timeout: 30
-    max_concurrent: 100
-```
-
-- **Retry Policy**
-```yaml
-middlewares:
-  retry_policy:
-    enabled: true
-    attempts: 3
-    per_try_timeout: 5
-    retry_on: ["connection_error", "server_error"]
-```
-
-- **Authentication**
-```yaml
-middlewares:
-  require_auth: true
-```
-
-### gRPC Configuration Options
-
-- `protocol`: Set to "GRPC" for gRPC routes
-- `endpoints_protocol`: Specifies the backend protocol ("GRPC" or "HTTP")
-- `rpc_server`: Base path for the gRPC service
-- `path`: Full gRPC service name pattern (e.g., "api_gateway.shop.user.v1.User/*")
-- `upstream`: gRPC server address with "grpc://" scheme
-
-#### Connection Pool Configuration
-```yaml
-grpc:
-  pool:
-    max_idle: 5m          # Maximum idle connection time
-    max_conns: 100        # Maximum connections in pool
-    health_check: true    # Enable health checks
-    check_interval: 30s   # Health check interval
-```
-
-#### Retry Configuration
-```yaml
-grpc:
-  retry:
-    max_attempts: 3       # Maximum retry attempts
-    initial_backoff: 100ms # Initial backoff duration
-    max_backoff: 2s       # Maximum backoff duration
-    backoff_multiplier: 2.0 # Backoff multiplier
-```
-
-#### Metrics
-The gRPC client pool exports the following Prometheus metrics:
-- `grpc_pool_active_connections`: Current number of active connections
-- `grpc_pool_connection_errors_total`: Total number of connection errors
-- `grpc_rpc_duration_seconds`: Duration of gRPC RPCs (histogram)
-- `grpc_rpc_errors_total`: Total number of RPC errors
-- `grpc_health_check_status`: Health status of connections (1=healthy, 0=unhealthy)
-
-### Example gRPC Route with Full Configuration
+#### Basic HTTP Proxy
 ```yaml
 routes:
-  - path: "api_gateway.shop.user.v1.User/*"
-    protocol: "GRPC"
-    endpoints_protocol: "GRPC"
-    rpc_server: "/api/user"
-    upstream: "grpc://user-service:50051"
-    timeout: 30
-    compression: true
-    grpc:
-      pool:
-        max_idle: 5m
-        max_conns: 100
-        health_check: true
-        check_interval: 30s
-      retry:
-        max_attempts: 3
-        initial_backoff: 100ms
-        max_backoff: 2s
-        backoff_multiplier: 2.0
-    middlewares:
-      require_auth: true
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
-```
-
-### Middleware Support for gRPC
-
-All standard middlewares work with gRPC:
-- Authentication
-- Rate limiting
-- Circuit breaker
-- Compression
-- Timeout handling
-- Error handling
-- Header transformation
-- Metrics collection
-- Tracing
-
-## 🛣️ Route Examples
-
-### Basic Proxy
-```yaml
-routes:
-  - path: "/api/v1/users"
+  - path: "/api/users"
     upstream: "http://user-service:8080"
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
 ```
 
-### With Authentication
+#### With Authentication
 ```yaml
 routes:
-  - path: "/scanjobmanager/*"
-    upstream: "http://scanjobmanager:8001"
+  - path: "/api/products/*"
+    upstream: "http://product-service:8001"
     protocol: HTTP
-    strip_prefix: false
-    timeout: 120
+    strip_prefix: true
+    timeout: 30
     middlewares:
-    require_auth: true
+      require_auth: true
 ```
 
-### With Rate Limiting
+#### With Rate Limiting
 ```yaml
 routes:
-  - path: "/api/v1/search"
+  - path: "/api/search"
     upstream: "http://search-service:8080"
     protocol: HTTP
     middlewares:
-    rate_limit:
-        requests: 100000
-      period: "minute"
+      rate_limit:
+        requests: 100
+        period: "minute"
 ```
 
-### With Circuit Breaker
+#### With Circuit Breaker
 ```yaml
 routes:
-  - path: "/api/v1/orders"
+  - path: "/api/orders"
     upstream: "http://order-service:8080"
     protocol: HTTP
     middlewares:
@@ -375,25 +152,11 @@ routes:
         max_concurrent: 100
 ```
 
-### With Retry Policy
+#### With Caching
 ```yaml
 routes:
-  - path: "/api/v1/products"
+  - path: "/api/products"
     upstream: "http://product-service:8080"
-    protocol: HTTP
-    middlewares:
-      retry_policy:
-        enabled: true
-        attempts: 3
-        per_try_timeout: 5
-        retry_on: ["connection_error", "server_error"]
-```
-
-### With Caching
-```yaml
-routes:
-  - path: "/api/v1/cache"
-    upstream: "http://cache-service:8080"
     protocol: HTTP
     middlewares:
       cache:
@@ -402,197 +165,60 @@ routes:
         cache_authenticated: false
 ```
 
-### Complete Example with All Middlewares
+#### With Service Discovery
 ```yaml
 routes:
-  - path: "/project"
-    upstream: "http://host.docker.internal:8002"
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  - path: "/api/services"
+    upstream: "etcd://services/api"  # Uses etcd service discovery
     protocol: HTTP
-    strip_prefix: false
-    timeout: 120
-    middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 100000
-        period: "minute"
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
-      retry_policy:
-        enabled: true
-        attempts: 3
-        per_try_timeout: 5
-        retry_on: ["connection_error", "server_error"]
-```
-
-### WebSocket Support
-```yaml
-routes:
-  - path: "/ws"
-    upstream: "ws://websocket-service:8080"
-    protocol: SOCKET
-    websocket:
-      enabled: true
-    middlewares:
-      require_auth: true
-```
-
-### HTTP to HTTP Route
-```yaml
-routes:
-  - path: "/api/users"
-    protocol: "HTTP"
-    upstream: "http://users-service:8080"
-    methods: ["GET", "POST", "PUT", "DELETE"]
-    strip_prefix: true
-    timeout: 30
-    compression: true
-    middlewares:
-      require_auth: true
-      rate_limit:
-        requests: 100000
-        period: "minute"
-```
-
-### gRPC to gRPC Route
-```yaml
-routes:
-  - path: "api_gateway.shop.user.v1.User/*"
-    protocol: "GRPC"
-    endpoints_protocol: "GRPC"
-    rpc_server: "/api/user"
-    upstream: "grpc://user-service:50051"
-    timeout: 30
-    compression: true
-    middlewares:
-      require_auth: true
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
-```
-
-### HTTP to gRPC Route (Protocol Conversion)
-```yaml
-routes:
-  - path: "/api/products"
-    protocol: "HTTP"
-    endpoints_protocol: "GRPC"
-    rpc_server: "/api/product"
-    upstream: "grpc://product-service:50051"
-    methods: ["GET", "POST"]
-    timeout: 30
-    middlewares:
-      require_auth: true
-```
-
-### Service Discovery Example
-```yaml
-routes:
-  - path: "/api/recommendations/*"
-    methods: ["GET", "POST"]
-    protocol: HTTP
-    upstream: "http://recommendation-service:8090"
-    strip_prefix: true
-    timeout: 30
     load_balancing:
-      method: "round_robin"
-      health_check: true
-      driver: etcd
-      discoveries:
-        name: "recommendation-service"
-        prefix: "services"
-        fail_limit: 3
-      health_check_config:
-        path: "/health"
-        interval: 10
-        timeout: 2
-    middlewares:
-      require_auth: true
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
+      strategy: "round_robin"  # Supports round_robin or random
 ```
 
 ## 🔒 Authentication
 
+The API Gateway supports two authentication methods:
+
 - **API Key**: `x-api-key` header or `api_key` query param
 - **JWT**: `Authorization: Bearer ...` header or `token` query param
-- Both can be required per route via `middlewares.require_auth`
+
+Authentication can be required per route via `middlewares.require_auth: true`
 
 **Examples:**
 ```bash
-curl -H "x-api-key: your-api-key" http://localhost:8080/api/v1/users
-curl -H "Authorization: Bearer your.jwt.token" http://localhost:8080/api/v1/users
-curl "http://localhost:8080/api/v1/users?token=your.jwt.token"
-curl "http://localhost:8080/api/v1/users?api_key=your-api-key"
+curl -H "x-api-key: your-api-key" http://localhost:8080/api/users
+curl -H "Authorization: Bearer your.jwt.token" http://localhost:8080/api/users
+curl "http://localhost:8080/api/users?token=your.jwt.token"
+curl "http://localhost:8080/api/users?api_key=your-api-key"
 ```
-
-## 🚦 Traffic Management
-
-- **Rate Limiting**: Per route, per client, configurable period and burst
-- **Circuit Breaker**: Per route, configurable thresholds and timeouts
-- **Caching**: In-memory, per route, configurable TTL and vary headers
-- **Retries**: Per route, with backoff
-- **Load Balancing**: Static endpoints or service discovery
 
 ## 📊 Observability
 
 - **Metrics**: Prometheus metrics at `/metrics`
-- **Tracing**: Distributed tracing (Jaeger, OpenTelemetry)
 - **Logging**: Structured JSON logs
 - **Health Checks**: `/health` endpoint
 
-## 🌍 Client IP & Geolocation
+## gRPC Support
 
-- **Client IP Detection**: Automatically extracts real client IP from headers (X-Real-IP, X-Forwarded-For, etc.)
-- **Optional Geolocation**: If an IP2Location LITE database is present, country code is included in `/test-ip` and logs. If not, geolocation is disabled gracefully.
+The API Gateway includes basic gRPC functionality:
 
-**To enable geolocation:**
-1. Download the IP2Location LITE DB1 from [IP2Location](https://lite.ip2location.com/)
-2. Place it in one of:
-   - `./IP2LOCATION-LITE-DB1.BIN`
-   - `./configs/IP2LOCATION-LITE-DB1.BIN`
-   - `/etc/api-gateway/IP2LOCATION-LITE-DB1.BIN`
-   - `/usr/share/ip2location/IP2LOCATION-LITE-DB1.BIN`
-   - Or set the `IP2LOCATION_DB_PATH` env var
+### Features
+- gRPC server implementation
+- Connection pooling
+- Support for unary methods
 
-**Test endpoint:**
-```bash
-curl http://localhost:8080/test-ip | jq
-curl -H "X-Real-IP: 8.8.8.8" http://localhost:8080/test-ip | jq
-```
+### Configuration Example
 
-## 📚 API Documentation
-
-- **Dynamic OpenAPI/Swagger**: Documentation is auto-generated from your `routes.yaml` and available at `/docs/swagger/`.
-- **Includes**: All routes, methods, security schemes, path params, and more.
-- **Updates**: On server start and whenever routes are changed.
-
-**Example:**
 ```yaml
-openapi: 3.0.3
-info:
-  title: Oortfy API Gateway
-  description: API Gateway for Oortfy microservices
-  version: 1.0.0
-paths:
-  /users:
-    get:
-      summary: Proxy to user-service
-      security:
-        - BearerAuth: []
-        - ApiKeyAuth: []
-      responses:
-        '200':
-          description: Success
+routes:
+  - path: "test.service.TestService/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/test"
+    upstream: "grpc://localhost:50051"
 ```
+
+Note: gRPC streaming is not yet supported.
 
 ## 🛠️ Development
 
@@ -606,25 +232,10 @@ make build
 make test
 ```
 
-### Local Development
-```bash
-make dev
-```
-
 ### Docker Support
 ```bash
 docker-compose up
 ```
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-All contributions must be made back to this project as per our license terms.
 
 ## 📄 License
 
@@ -636,132 +247,3 @@ Key points:
 - ✅ You must share modifications back to this project
 - ❌ You cannot sell this software as a standalone product
 - ❌ You cannot distribute closed source versions
-
-## gRPC Support
-
-The API Gateway supports HTTP to gRPC protocol conversion with the following features:
-
-### Features
-- **Connection Pooling**: Efficient reuse of gRPC connections with automatic health checks
-- **Dynamic Service Discovery**: Optional service discovery via etcd
-- **Protocol Conversion**: HTTP requests are automatically converted to gRPC calls
-- **Performance Optimized**: Connection reuse and efficient handling of gRPC messages
-- **Middleware Support**: All standard middlewares (auth, rate limiting, etc.) work with gRPC routes
-
-### Configuration Example
-
-```yaml
-routes:
-  - path: "/users/*"
-    protocol: "HTTP"
-    endpoints_protocol: "GRPC"  # Backend is gRPC
-    rpc_server: "/api/user"     # Base path for mapping HTTP routes to gRPC methods
-    upstream: "grpc://user-service:50051"
-    strip_prefix: true
-    timeout: 30
-    middlewares:
-      require_auth: true
-      circuit_breaker:
-        enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
-```
-
-### Example Usage
-
-**HTTP to gRPC**:
-```bash
-# Call gRPC service using HTTP
-curl -X POST http://gateway:8080/users/GetUser \
-  -H "Content-Type: application/json" \
-  -d '{"user_id": "123"}'
-
-# Response
-{
-  "user": {
-    "id": "123",
-    "name": "John Doe",
-    "email": "john@example.com"
-  }
-}
-```
-
-### Performance Settings
-
-The gRPC proxy is optimized for performance with these default settings:
-```yaml
-grpc:
-  pool:
-    max_idle: 5m          # Maximum idle connection time
-    max_conns: 100        # Maximum connections in pool
-    health_check: true    # Enable health checks
-    check_interval: 30s   # Health check interval
-  retry:
-    max_attempts: 3       # Maximum retry attempts
-    initial_backoff: 100ms # Initial backoff duration
-    max_backoff: 2s       # Maximum backoff duration
-    backoff_multiplier: 2.0 # Backoff multiplier
-```
-
-### Service Discovery
-
-1. **Using etcd**:
-```yaml
-routes:
-  - path: "/users/*"
-    protocol: "HTTP"
-    endpoints_protocol: "GRPC"
-    load_balancing:
-      driver: "etcd"
-      discoveries:
-        name: "user-service"
-        prefix: "services"
-```
-
-2. **Static Endpoints**:
-```yaml
-routes:
-  - path: "/users/*"
-    protocol: "HTTP"
-    endpoints_protocol: "GRPC"
-    load_balancing:
-      driver: "static"
-      endpoints:
-        - "grpc://user-service-1:50051"
-        - "grpc://user-service-2:50051"
-```
-
-### Error Handling
-
-The gateway automatically converts gRPC status codes to appropriate HTTP status codes:
-
-| gRPC Code | HTTP Status |
-|-----------|-------------|
-| OK | 200 |
-| InvalidArgument | 400 |
-| Unauthenticated | 401 |
-| PermissionDenied | 403 |
-| NotFound | 404 |
-| AlreadyExists | 409 |
-| ResourceExhausted | 429 |
-| Internal | 500 |
-| Unavailable | 503 |
-
-### Best Practices
-
-1. **Connection Management**:
-   - Configure appropriate timeout values
-   - Enable health checks for reliability
-
-2. **Message Sizes**:
-   - Be mindful of request/response message sizes
-   - Default maximum message size is 16MB
-
-3. **Security**:
-   - Use authentication middleware for protected gRPC services
-   - Configure proper CORS settings
-
-4. **Monitoring**:
-   - Monitor connection pool metrics
-   - Check health status metrics for backend services

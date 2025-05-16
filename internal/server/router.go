@@ -9,25 +9,33 @@ import (
 
 	"api-gateway/internal/config"
 	"api-gateway/internal/handlers"
+	"api-gateway/pkg/logger"
 )
 
 // Router handles route configuration and setup
 type Router struct {
 	config *config.Config
 	router *mux.Router
+	logger logger.Logger
 }
 
 // NewRouter creates a new router instance
-func NewRouter(cfg *config.Config) *Router {
+func NewRouter(cfg *config.Config, log logger.Logger) *Router {
 	return &Router{
 		config: cfg,
 		router: mux.NewRouter(),
+		logger: log,
 	}
 }
 
 // SetupRoutes configures all routes from the configuration
 func (r *Router) SetupRoutes(routeConfig *config.RouteConfig) error {
 	for _, route := range routeConfig.Routes {
+		// Skip gRPC routes - they'll be handled by the gRPC server
+		if route.Protocol == config.ProtocolGRPC {
+			continue
+		}
+
 		if err := r.setupRoute(route); err != nil {
 			return fmt.Errorf("failed to setup route %s: %w", route.Path, err)
 		}
@@ -46,13 +54,6 @@ func (r *Router) setupRoute(route config.Route) error {
 
 	// Create appropriate handler based on protocol
 	switch route.Protocol {
-	case config.ProtocolGRPC:
-		grpcHandler, err := handlers.NewGRPCHandler(&route)
-		if err != nil {
-			return fmt.Errorf("failed to create gRPC handler: %w", err)
-		}
-		handler = grpcHandler
-
 	case config.ProtocolHTTP:
 		httpHandler, err := handlers.NewHTTPHandler(&route)
 		if err != nil {
