@@ -108,6 +108,11 @@ func (w *corsResponseWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 
+// Header returns the header map to use for the response
+func (w *corsResponseWriter) Header() http.Header {
+	return w.ResponseWriter.Header()
+}
+
 // setCORSHeaders sets the CORS headers if they aren't already set
 func (w *corsResponseWriter) setCORSHeaders() {
 	// If the Access-Control-Allow-Origin header is already set, don't override it

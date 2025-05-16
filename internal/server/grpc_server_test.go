@@ -87,6 +87,11 @@ func (m *MockGRPCServer) Serve(lis net.Listener) error {
 	return args.Error(0)
 }
 
+// On adds a new expected call
+func (m *MockGRPCServer) On(methodName string, arguments ...interface{}) *mock.Call {
+	return m.Mock.On(methodName, arguments...)
+}
+
 func TestNewGRPCServer(t *testing.T) {
 	// Create a minimal config for testing
 	cfg := &config.Config{

@@ -89,6 +89,16 @@ func (m *MockEtcdClient) Close() error {
 	return args.Error(0)
 }
 
+// On adds a new expected call
+func (m *MockEtcdClient) On(methodName string, arguments ...interface{}) *mock.Call {
+	return m.Mock.On(methodName, arguments...)
+}
+
+// Called indicates that the method was called
+func (m *MockEtcdClient) Called(arguments ...interface{}) mock.Arguments {
+	return m.Mock.Called(arguments...)
+}
+
 func TestGetService(t *testing.T) {
 	// Create a service discovery instance
 	sd := &ServiceDiscovery{

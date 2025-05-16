@@ -349,6 +349,13 @@ func (w *customResponseWriter) WriteHeader(status int) {
 	w.ResponseWriter.WriteHeader(status)
 }
 
+func (w *customResponseWriter) Write(b []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	return w.ResponseWriter.Write(b)
+}
+
 type cachingResponseWriter struct {
 	http.ResponseWriter
 	status  int

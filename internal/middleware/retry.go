@@ -172,6 +172,11 @@ func (r *responseRecorder) Write(b []byte) (int, error) {
 	return r.body.Write(b)
 }
 
+// Header returns the header map that will be sent
+func (r *responseRecorder) Header() http.Header {
+	return r.ResponseWriter.Header()
+}
+
 // Reset clears the recorder for reuse
 func (r *responseRecorder) Reset() {
 	r.statusCode = http.StatusOK

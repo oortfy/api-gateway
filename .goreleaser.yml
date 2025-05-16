@@ -8,6 +8,8 @@ builds:
     binary: apigateway
     ldflags:
       - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    flags:
+      - -buildvcs=false
     env:
       - CGO_ENABLED=0
     goos:

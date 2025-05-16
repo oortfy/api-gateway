@@ -1,3 +1,6 @@
+//go:build !buildvcs
+// +build !buildvcs
+
 package main
 
 import (
