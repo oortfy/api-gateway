@@ -1,4 +1,4 @@
-.PHONY: build run test clean docker-build docker-run docker-compose test-unit test-integration test-coverage test-race test-all swagger-validate swagger-serve
+.PHONY: build run test clean docker-build docker-run docker-compose test-unit test-integration test-coverage test-race test-all swagger-validate swagger-serve test-grpc test-proxy test-server test-auth test-middleware test-component-coverage test-discovery
 
 # Variables
 APP_NAME=apigateway
@@ -9,6 +9,14 @@ ROUTES_PATH=configs/routes.yaml
 COVERAGE_FILE=coverage.out
 COVERAGE_HTML=coverage.html
 SWAGGER_DIR=docs/swagger
+
+# Component specific coverage files
+PROXY_COVERAGE=proxy.out
+HANDLERS_COVERAGE=handlers.out
+MIDDLEWARE_COVERAGE=middleware.out
+AUTH_COVERAGE=auth.out
+OVERALL_COVERAGE=overall.out
+DISCOVERY_COVERAGE=discovery.out
 
 # Go commands
 build:
@@ -33,6 +41,46 @@ test-integration:
 	@echo "Running integration tests..."
 	@go test -v -tags=integration ./tests/...
 
+# Component-specific test targets
+test-grpc:
+	@echo "Running gRPC tests..."
+	@go test -v ./internal/proxy ./internal/server ./pkg/grpc/...
+
+test-proxy:
+	@echo "Running proxy tests..."
+	@go test -v ./internal/proxy/...
+
+test-server:
+	@echo "Running server tests..."
+	@go test -v ./internal/server/...
+
+test-auth:
+	@echo "Running auth tests..."
+	@go test -v ./internal/auth/...
+
+test-middleware:
+	@echo "Running middleware tests..."
+	@go test -v ./internal/middleware/...
+
+test-discovery:
+	@echo "Running service discovery tests..."
+	@go test -v ./pkg/discoverer/...
+
+test-component-coverage:
+	@echo "Generating component-specific coverage reports..."
+	@go test -coverprofile=$(PROXY_COVERAGE) ./internal/proxy/...
+	@go test -coverprofile=$(HANDLERS_COVERAGE) ./internal/handlers/...
+	@go test -coverprofile=$(MIDDLEWARE_COVERAGE) ./internal/middleware/...
+	@go test -coverprofile=$(AUTH_COVERAGE) ./internal/auth/...
+	@go test -coverprofile=$(DISCOVERY_COVERAGE) ./pkg/discoverer/...
+	@echo "Creating combined coverage report..."
+	@go tool cover -html=$(PROXY_COVERAGE) -o proxy_coverage.html
+	@go tool cover -html=$(HANDLERS_COVERAGE) -o handlers_coverage.html
+	@go tool cover -html=$(MIDDLEWARE_COVERAGE) -o middleware_coverage.html
+	@go tool cover -html=$(AUTH_COVERAGE) -o auth_coverage.html
+	@go tool cover -html=$(DISCOVERY_COVERAGE) -o discovery_coverage.html
+	@echo "Coverage reports generated"
+
 test-coverage:
 	@echo "Running tests with coverage..."
 	@go test -coverprofile=$(COVERAGE_FILE) ./...
@@ -48,7 +96,7 @@ test-all: test-unit test-integration test-coverage test-race
 
 clean:
 	@echo "Cleaning build directory..."
-	@rm -rf $(BUILD_DIR) $(COVERAGE_FILE) $(COVERAGE_HTML)
+	@rm -rf $(BUILD_DIR) $(COVERAGE_FILE) $(COVERAGE_HTML) *.out *.html
 	@echo "Clean complete"
 
 # Docker commands
@@ -120,6 +168,13 @@ help:
 	@echo "  make test-unit     - Run unit tests only"
 	@echo "  make test-integration - Run integration tests only"
 	@echo "  make test-coverage - Run tests with coverage report"
+	@echo "  make test-component-coverage - Generate coverage reports for individual components"
+	@echo "  make test-grpc     - Run only gRPC related tests"
+	@echo "  make test-proxy    - Run only proxy related tests"
+	@echo "  make test-server   - Run only server related tests"
+	@echo "  make test-auth     - Run only authentication related tests"
+	@echo "  make test-middleware - Run only middleware related tests"
+	@echo "  make test-discovery - Run only service discovery related tests"
 	@echo "  make test-race     - Run tests with race detection"
 	@echo "  make test-all      - Run all test suites"
 	@echo "  make clean         - Clean build artifacts"

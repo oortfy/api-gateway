@@ -3,9 +3,9 @@ package config
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
-	"github.com/gobuffalo/packr/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,6 +20,8 @@ type Config struct {
 	Metrics  MetricsConfig  `yaml:"metrics"`
 	Tracing  TracingConfig  `yaml:"tracing"`
 	Etcd     EtcdConfig     `yaml:"etcd"`
+	GRPC     GRPCConfig     `yaml:"grpc"`
+	Routes   []Route        `yaml:"routes"`
 }
 
 // ServerConfig contains server configuration
@@ -146,31 +148,54 @@ type EtcdConfig struct {
 	Hosts string `yaml:"hosts"`
 }
 
-// configBox holds embedded configuration files using packr
-// Files are automatically embedded from ./configs directory during build
-var configBox = packr.New("configs", "./configs")
-
 // LoadConfig loads configuration from a YAML file
 func LoadConfig(path string) (*Config, error) {
 	var data []byte
 	var err error
 
-	// Development mode: Try reading from filesystem first
-	if os.Getenv("GO_ENV") == "development" {
-		data, err = os.ReadFile("configs/" + path)
-		if err == nil {
-			goto PARSE_CONFIG
+	// Get the base filename for path construction
+	filename := filepath.Base(path)
+
+	// Try possible config locations in order of priority
+	searchPaths := []string{
+		// 1. Environment variable path if specified
+		os.Getenv("CONFIG_PATH"),
+		// 2. Exact path provided to function
+		path,
+		// 3. configs/ directory (relative to working directory)
+		filepath.Join("configs", filename),
+		// 4. System-wide location
+		filepath.Join("/etc/api-gateway", filename),
+	}
+
+	// Only consider non-empty paths
+	var validPaths []string
+	for _, p := range searchPaths {
+		if p != "" {
+			validPaths = append(validPaths, p)
 		}
-		// Continue to embedded config if file read fails
 	}
 
-	// Production mode: Read from embedded packr box
-	data, err = configBox.Find("config.yaml")
-	if err != nil {
-		return nil, fmt.Errorf("failed to load config (both file and embedded): %w", err)
+	// Try each location until we find the config
+	for _, configPath := range validPaths {
+		data, err = os.ReadFile(configPath)
+		if err == nil {
+			// Successfully read the file
+			config, parseErr := parseConfig(data)
+			if parseErr == nil {
+				return config, nil
+			}
+			// Log parse error but continue trying other locations
+			fmt.Printf("Warning: Could not parse config file %s: %v\n", configPath, parseErr)
+		}
 	}
 
-PARSE_CONFIG:
+	// If we get here, we couldn't find or parse any config file
+	return nil, fmt.Errorf("failed to load config file %s from any location - please ensure the file exists in configs/ directory", filename)
+}
+
+// parseConfig parses the config data and handles environment variable substitution
+func parseConfig(data []byte) (*Config, error) {
 	// Replace environment variables in the format ${VAR_NAME}
 	data = replaceEnvVars(data)
 

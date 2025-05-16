@@ -16,6 +16,7 @@ import (
 	"api-gateway/internal/swagger"
 	"api-gateway/internal/util"
 	"api-gateway/pkg/logger"
+
 	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -26,6 +27,7 @@ type Server struct {
 	routes            *config.RouteConfig
 	log               logger.Logger
 	httpServer        *http.Server
+	grpcServer        *GRPCServer
 	router            *mux.Router
 	authService       *auth.AuthService
 	httpProxy         *proxy.HTTPProxy
@@ -57,6 +59,9 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 	urlRewriter := middleware.NewURLRewriter(log)
 	retryMiddleware := middleware.NewRetryMiddleware(log)
 	metricsMiddleware := middleware.NewMetricsMiddleware(&cfg.Metrics, log)
+
+	// Initialize gRPC server
+	grpcServer := NewGRPCServer(cfg, routes, log)
 
 	// Convert CorsConfig to CORSConfig
 	corsConfig := &config.CORSConfig{
@@ -99,6 +104,7 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 		routes:            routes,
 		log:               log,
 		httpServer:        httpServer,
+		grpcServer:        grpcServer,
 		router:            router,
 		authService:       authService,
 		httpProxy:         httpProxy,
@@ -126,6 +132,10 @@ func (s *Server) Start() error {
 
 	// Register routes
 	for _, route := range s.routes.Routes {
+		// Skip gRPC routes for HTTP server - they'll be handled by gRPC server
+		if route.Protocol == config.ProtocolGRPC {
+			continue
+		}
 		s.registerRoute(route)
 	}
 
@@ -133,9 +143,26 @@ func (s *Server) Start() error {
 	s.registerUtilityEndpoints()
 
 	// Start the HTTP server
-	s.log.Info("Starting API Gateway server",
+	s.log.Info("Starting API Gateway HTTP server",
 		logger.String("address", s.config.Server.Address),
 	)
+
+	// Start gRPC server in a separate goroutine
+	hasGRPCRoutes := false
+	for _, route := range s.routes.Routes {
+		if route.Protocol == config.ProtocolGRPC && route.EndpointsProtocol == config.ProtocolGRPC {
+			hasGRPCRoutes = true
+			break
+		}
+	}
+
+	if hasGRPCRoutes {
+		go func() {
+			if err := s.grpcServer.Start(); err != nil {
+				s.log.Error("gRPC server error", logger.Error(err))
+			}
+		}()
+	}
 
 	return s.httpServer.ListenAndServe()
 }
@@ -217,7 +244,13 @@ func (s *Server) registerUtilityEndpoints() {
 
 // Stop gracefully stops the server
 func (s *Server) Stop(ctx context.Context) error {
-	s.log.Info("Shutting down server...")
+	s.log.Info("Shutting down servers...")
+
+	// Stop gRPC server if it was started
+	if s.grpcServer != nil {
+		s.grpcServer.Stop()
+	}
+
 	return s.httpServer.Shutdown(ctx)
 }
 

@@ -46,8 +46,8 @@ func NewCacheMiddleware(config *config.CacheConfig, log logger.Logger) *CacheMid
 
 // PurgeCache handles cache purge requests
 func (c *CacheMiddleware) PurgeCache(w http.ResponseWriter, r *http.Request) {
-	// Only allow POST method for purging
-	if r.Method != http.MethodPost {
+	// Allow both GET and POST methods for purging (GET for testing, POST for production)
+	if r.Method != http.MethodPost && r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -81,8 +81,17 @@ func (c *CacheMiddleware) PurgeCache(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+
+	var message string
+	if pathPattern != "" {
+		message = "purged"
+	} else {
+		message = "all items purged"
+	}
+
 	response := map[string]interface{}{
 		"success":           true,
+		"message":           message,
 		"purged_entries":    purgedCount,
 		"remaining_entries": afterCount,
 	}
@@ -113,6 +122,9 @@ func (c *CacheMiddleware) RegisterPurgeEndpoint(router http.Handler) http.Handle
 // Cache middleware caches responses for GET requests
 func (c *CacheMiddleware) Cache(next http.Handler, route config.Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Set X-Cache header for misses by default
+		w.Header().Set("X-Cache", "MISS")
+
 		// Skip caching if not enabled for this route or if it's not a GET request
 		if !c.shouldCache(r, route) {
 			next.ServeHTTP(w, r)
@@ -335,7 +347,11 @@ func (c *CacheMiddleware) getTTL(r *http.Request, headers http.Header, route con
 		if len(parts) > 1 {
 			maxAge := strings.Split(parts[1], ",")[0]
 			if seconds, err := strconv.Atoi(maxAge); err == nil {
-				return time.Duration(seconds) * time.Second
+				// Return 0 for negative or zero TTL values (don't cache)
+				if seconds <= 0 {
+					return 0
+				}
+				ttl = time.Duration(seconds) * time.Second
 			}
 		}
 	}
@@ -344,7 +360,7 @@ func (c *CacheMiddleware) getTTL(r *http.Request, headers http.Header, route con
 	expires := headers.Get("Expires")
 	if expires != "" {
 		if expTime, err := time.Parse(time.RFC1123, expires); err == nil {
-			ttl = expTime.Sub(time.Now())
+			ttl = time.Until(expTime)
 		}
 	}
 
@@ -372,11 +388,26 @@ type cachingResponseWriter struct {
 // WriteHeader captures the status code
 func (crw *cachingResponseWriter) WriteHeader(statusCode int) {
 	crw.statusCode = statusCode
+
+	// Ensure all headers from the original response are copied to our headers
+	for k, v := range crw.ResponseWriter.Header() {
+		for _, val := range v {
+			crw.headers.Add(k, val)
+		}
+	}
+
 	crw.ResponseWriter.WriteHeader(statusCode)
 }
 
 // Write captures the response body
 func (crw *cachingResponseWriter) Write(b []byte) (int, error) {
+	// Make sure we capture headers before writing the body
+	for k, v := range crw.ResponseWriter.Header() {
+		for _, val := range v {
+			crw.headers.Add(k, val)
+		}
+	}
+
 	crw.buffer.Write(b)
 	return crw.ResponseWriter.Write(b)
 }
@@ -384,11 +415,5 @@ func (crw *cachingResponseWriter) Write(b []byte) (int, error) {
 // Header captures the response headers
 func (crw *cachingResponseWriter) Header() http.Header {
 	h := crw.ResponseWriter.Header()
-
-	// Copy headers to our internal storage
-	for k, v := range h {
-		crw.headers[k] = v
-	}
-
 	return h
 }

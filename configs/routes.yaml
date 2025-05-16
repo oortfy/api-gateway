@@ -4,72 +4,119 @@ routes:
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
     middlewares:
       require_auth: false
       rate_limit:
-        requests_per_minute: 100000
-        per_client: true
-        client_requests_per_minute: 100
-        client_identifier: "ip"
+        requests: 100000
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 30
-        timeout: 120
-        max_concurrent: 10000
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
-        max_attempts: 3
-        initial_interval: 1
-        max_interval: 10
-        multiplier: 2.0
-        retry_on_status_codes: [500, 502, 503, 504]
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 
   - path: "/scanjobmanager/*"
     upstream: "http://scanjobmanager:8001"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
     middlewares:
       require_auth: true
       rate_limit:
-        requests_per_minute: 100000
-        per_client: true
-        client_requests_per_minute: 100
-        client_identifier: "ip"
+        requests: 100000
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 30
-        timeout: 120
-        max_concurrent: 10000
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
-        max_attempts: 3
-        initial_interval: 1
-        max_interval: 10
-        multiplier: 2.0
-        retry_on_status_codes: [500, 502, 503, 504]
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
 
   - path: "/project"
     upstream: "http://host.docker.internal:8002"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 120
+    timeout: 30
     middlewares:
       require_auth: true
       rate_limit:
-        requests_per_minute: 100000
-        per_client: true
-        client_requests_per_minute: 100
-        client_identifier: "ip"
+        requests: 100000
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 30
-        timeout: 120
-        max_concurrent: 10000
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
       retry_policy:
-        max_attempts: 3
-        initial_interval: 1
-        max_interval: 10
-        multiplier: 2.0
-        retry_on_status_codes: [500, 502, 503, 504]
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["connection_error", "server_error"]
+
+  # gRPC to gRPC proxy example
+  - path: "com.example.service.UserService/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/users"
+    upstream: "grpc://user-service:50051"
+    timeout: 30
+    compression: true
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: "static"
+      endpoints:
+        - "grpc://user-service-1:50051"
+        - "grpc://user-service-2:50051"
+      health_check_config:
+        interval: 10
+        timeout: 2
+    middlewares:
+      require_auth: true
+      circuit_breaker:
+        enabled: true
+        threshold: 5
+        timeout: 30
+        max_concurrent: 100
+      retry_policy:
+        enabled: true
+        attempts: 3
+        per_try_timeout: 5
+        retry_on: ["unavailable", "deadline_exceeded"]
+    
+  # Another gRPC to gRPC example with etcd service discovery
+  - path: "com.example.service.ProductService/*"
+    protocol: "GRPC"
+    endpoints_protocol: "GRPC"
+    rpc_server: "/api/products"
+    upstream: "grpc://product-service:50051" # Fallback if service discovery fails
+    timeout: 60
+    compression: true
+    load_balancing:
+      method: "round_robin"
+      health_check: true
+      driver: "etcd"
+      discoveries:
+        name: "product-service"
+        prefix: "services"
+        fail_limit: 3
+      health_check_config:
+        interval: 15
+        timeout: 3
+    middlewares:
+      require_auth: true
+      rate_limit:
+        requests: 1000
+        period: "minute"

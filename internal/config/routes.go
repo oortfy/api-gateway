@@ -14,19 +14,21 @@ type RouteConfig struct {
 
 // Route represents a single API route
 type Route struct {
-	Path          string               `yaml:"path"`
-	Methods       []string             `yaml:"methods"`
-	Upstream      string               `yaml:"upstream"`
-	Protocol      string               `yaml:"protocol"`
-	StripPrefix   bool                 `yaml:"strip_prefix"`
-	Timeout       int                  `yaml:"timeout"`
-	WebSocket     *WebSocketConfig     `yaml:"websocket"`
-	LoadBalancing *LoadBalancingConfig `yaml:"load_balancing"`
-	ErrorHandling *ErrorHandling       `yaml:"error_handling"`
-	Compression   bool                 `yaml:"compression"`
-	IPWhitelist   []string             `yaml:"ip_whitelist"`
-	IPBlacklist   []string             `yaml:"ip_blacklist"`
-	Middlewares   *Middlewares         `yaml:"middlewares"`
+	Path              string               `yaml:"path"`
+	Methods           []string             `yaml:"methods"`
+	Upstream          string               `yaml:"upstream"`
+	Protocol          string               `yaml:"protocol"`
+	EndpointsProtocol string               `yaml:"endpoints_protocol"`
+	RPCServer         string               `yaml:"rpc_server"`
+	StripPrefix       bool                 `yaml:"strip_prefix"`
+	Timeout           int                  `yaml:"timeout"`
+	WebSocket         *WebSocketConfig     `yaml:"websocket"`
+	LoadBalancing     *LoadBalancingConfig `yaml:"load_balancing"`
+	ErrorHandling     *ErrorHandling       `yaml:"error_handling"`
+	Compression       bool                 `yaml:"compression"`
+	IPWhitelist       []string             `yaml:"ip_whitelist"`
+	IPBlacklist       []string             `yaml:"ip_blacklist"`
+	Middlewares       *Middlewares         `yaml:"middlewares"`
 }
 
 // RouteCacheConfig contains cache configuration for a route
@@ -104,46 +106,79 @@ type Discoveries struct {
 	FailLimit int    `yaml:"fail_limit"`
 }
 
+// Protocol types
+const (
+	ProtocolHTTP = "HTTP"
+	ProtocolGRPC = "GRPC"
+)
+
+// Validate validates the route configuration
+func (r *Route) Validate() error {
+	if r.Path == "" {
+		return fmt.Errorf("path is required")
+	}
+	if r.Upstream == "" {
+		return fmt.Errorf("upstream is required")
+	}
+
+	// Validate protocol settings
+	if r.Protocol != "" {
+		switch r.Protocol {
+		case ProtocolHTTP, ProtocolGRPC:
+			// Valid protocols
+		default:
+			return fmt.Errorf("invalid protocol: %s", r.Protocol)
+		}
+	} else {
+		// Default to HTTP if not specified
+		r.Protocol = ProtocolHTTP
+	}
+
+	// Validate endpoint protocol
+	if r.EndpointsProtocol != "" {
+		switch r.EndpointsProtocol {
+		case ProtocolHTTP, ProtocolGRPC:
+			// Valid endpoint protocols
+		default:
+			return fmt.Errorf("invalid endpoints_protocol: %s", r.EndpointsProtocol)
+		}
+	} else {
+		// Default to same as protocol if not specified
+		r.EndpointsProtocol = r.Protocol
+	}
+
+	// Additional gRPC-specific validation
+	if r.Protocol == ProtocolGRPC {
+		if r.RPCServer == "" {
+			return fmt.Errorf("rpc_server is required for gRPC routes")
+		}
+	}
+
+	return nil
+}
+
 // LoadRoutes loads route configurations from a YAML file
 func LoadRoutes(path string) (*RouteConfig, error) {
-	var routeConfig RouteConfig
-	var err error
-	var data []byte
-
-	// Development mode: Try reading from filesystem first
-	if os.Getenv("GO_ENV") == "development" {
-		file, err := os.Open("configs/" + path)
-		if err == nil {
-			defer file.Close()
-			decoder := yaml.NewDecoder(file)
-			if err = decoder.Decode(&routeConfig); err == nil {
-				goto VALIDATE_ROUTES
-			}
-		}
-		// Continue to embedded config if file read fails
-	}
-
-	// Production mode: Read from embedded packr box
-	data, err = configBox.Find(path)
+	routesFile, err := os.Open(path)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load routes config (both file and embedded): %w", err)
+		return nil, fmt.Errorf("failed to open routes file: %w", err)
+	}
+	defer routesFile.Close()
+
+	var routeConfig RouteConfig
+	decoder := yaml.NewDecoder(routesFile)
+	if err := decoder.Decode(&routeConfig); err != nil {
+		return nil, fmt.Errorf("failed to parse routes file: %w", err)
 	}
 
-	if err := yaml.Unmarshal(data, &routeConfig); err != nil {
-		return nil, fmt.Errorf("failed to parse embedded routes config: %w", err)
-	}
-
-VALIDATE_ROUTES:
 	// Validate routes
 	for i, route := range routeConfig.Routes {
-		if route.Path == "" {
-			return nil, fmt.Errorf("route at index %d is missing 'path'", i)
+		if err := route.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid route at index %d: %w", i, err)
 		}
-		if route.Upstream == "" {
-			return nil, fmt.Errorf("route at index %d is missing 'upstream'", i)
-		}
-		if len(route.Methods) == 0 {
-			// Default to all methods if none specified
+
+		if len(route.Methods) == 0 && route.Protocol != ProtocolGRPC {
+			// Default to all methods if none specified for HTTP routes
 			routeConfig.Routes[i].Methods = []string{"GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS", "HEAD"}
 		}
 		if route.Timeout == 0 {
