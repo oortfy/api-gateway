@@ -35,11 +35,18 @@ The pipelines are designed to run in Kubernetes pods using the Jenkins Kubernete
 2. Add a new cloud of type Kubernetes
 3. Configure the Kubernetes cloud:
    - Kubernetes URL: URL to your Kubernetes API server
-   - Kubernetes Namespace: The namespace where Jenkins should create pods
+   - Kubernetes Namespace: `jenkins-agents` (the namespace where Jenkins should create pods)
    - Credentials: Select your Kubernetes credentials
    - Jenkins URL: https://jenkins.oortfy.com/ (or your Jenkins URL)
 
 Note that the pod template is defined directly in the Jenkinsfiles, so no additional pod templates need to be configured in Jenkins.
+
+### Required Kubernetes Setup
+
+Before running the pipelines, ensure that:
+1. The `jenkins-agents` namespace exists in your Kubernetes cluster
+2. A ServiceAccount named `jenkins` exists in the `jenkins-agents` namespace with appropriate permissions
+3. The nodes in your cluster allow the Docker socket to be mounted from the host
 
 ## Setting Up Jenkins Pipelines
 

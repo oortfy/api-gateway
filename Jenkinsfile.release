@@ -7,6 +7,7 @@ kind: Pod
 metadata:
   labels:
     jenkins: agent
+  namespace: jenkins-agents
 spec:
   serviceAccountName: jenkins
   containers:
