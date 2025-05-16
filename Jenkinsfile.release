@@ -1,0 +1,130 @@
+pipeline {
+    agent {
+        kubernetes {
+            yaml '''
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    jenkins: agent
+spec:
+  serviceAccountName: jenkins
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    env:
+    - name: JENKINS_URL
+      value: "https://jenkins.oortfy.com/"
+    - name: JENKINS_AGENT_WORKDIR
+      value: "/home/jenkins/agent"
+  - name: golang
+    image: golang:1.24
+    command:
+    - cat
+    tty: true
+  - name: docker
+    image: docker:latest
+    command:
+    - cat
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+'''
+            defaultContainer 'golang'
+        }
+    }
+
+    parameters {
+        string(name: 'VERSION', defaultValue: '', description: 'Release version (e.g., v1.0.0)')
+        booleanParam(name: 'PUSH_DOCKER', defaultValue: true, description: 'Push Docker image to registry')
+    }
+
+    environment {
+        DOCKER_REGISTRY = 'your-registry.example.com'  // Replace with your Docker registry
+        DOCKER_REPOSITORY = 'apigateway'
+        DOCKER_CREDENTIALS_ID = 'docker-credentials'   // Jenkins credentials ID for Docker registry
+    }
+
+    stages {
+        stage('Setup') {
+            steps {
+                container('golang') {
+                    // Install GoReleaser
+                    sh 'go install github.com/goreleaser/goreleaser@latest'
+                    
+                    // Download dependencies
+                    sh 'go mod download'
+                    sh 'go mod tidy'
+                }
+            }
+        }
+
+        stage('Build Release') {
+            steps {
+                container('golang') {
+                    script {
+                        def version = params.VERSION ?: sh(script: 'git describe --tags --always', returnStdout: true).trim()
+                        
+                        // Create release artifacts
+                        sh """
+                        \$(go env GOPATH)/bin/goreleaser build --single-target --clean --skip-validate
+                        """
+                        
+                        // Archive release artifacts
+                        archiveArtifacts artifacts: 'dist/**/*', fingerprint: true
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                container('docker') {
+                    script {
+                        def version = params.VERSION ?: sh(script: 'git describe --tags --always', returnStdout: true).trim()
+                        
+                        // Build Docker image
+                        sh """
+                        docker build -t ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:${version} .
+                        docker tag ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:${version} ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:latest
+                        """
+                    }
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            when {
+                expression { return params.PUSH_DOCKER }
+            }
+            steps {
+                container('docker') {
+                    script {
+                        def version = params.VERSION ?: sh(script: 'git describe --tags --always', returnStdout: true).trim()
+                        
+                        // Login to Docker registry
+                        withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
+                            sh """
+                            echo "${DOCKER_PASSWORD}" | docker login ${env.DOCKER_REGISTRY} -u "${DOCKER_USERNAME}" --password-stdin
+                            docker push ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:${version}
+                            docker push ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:latest
+                            """
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up workspace
+            cleanWs()
+        }
+    }
+} 
