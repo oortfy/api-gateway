@@ -23,21 +23,32 @@ spec:
     command:
     - cat
     tty: true
-  - name: docker
-    image: docker:dind
-    securityContext:
-      privileged: true
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.11.0-debug
+    imagePullPolicy: Always
     command:
-    - cat
+    - /busybox/cat
     tty: true
-    env:
-    - name: DOCKER_HOST
-      value: tcp://localhost:2375
-    - name: DOCKER_TLS_CERTDIR
-      value: ""
+    volumeMounts:
+      - name: jenkins-docker-cfg
+        mountPath: /kaniko/.docker
+    resources:
+      limits:
+        memory: 2Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 250m
   volumes:
-  - name: docker-sock
-    emptyDir: {}
+  - name: jenkins-docker-cfg
+    secret:
+      secretName: regcred
+      items:
+        - key: .dockerconfigjson
+          path: config.json
+  - emptyDir:
+      medium: ""
+    name: "workspace-volume"
 '''
             defaultContainer 'golang'
         }
@@ -124,9 +135,9 @@ spec:
 
         stage('Build Docker Image') {
             steps {
-                container('docker') {
-                    // Build Docker image
-                    sh 'docker build -t apigateway:latest .'
+                container('kaniko') {
+                    // Build Docker image using Kaniko
+                    sh '/kaniko/executor --context=$PWD --destination=apigateway:latest'
                 }
             }
         }
