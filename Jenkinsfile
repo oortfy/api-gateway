@@ -59,6 +59,10 @@ spec:
         IMAGE_NAME = "oortfy/apigateway"
         IMAGE_TAG = "${BUILD_NUMBER}"
     }
+    
+    triggers {
+        cron('0 12 * * *')  // Run every day at 12 PM
+    }
 
     stages {
         stage('Setup') {
