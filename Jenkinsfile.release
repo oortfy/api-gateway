@@ -23,18 +23,32 @@ spec:
     command:
     - cat
     tty: true
-  - name: docker
-    image: docker:latest
+  - name: kaniko
+    image: gcr.io/kaniko-project/executor:v1.11.0-debug
+    imagePullPolicy: Always
     command:
-    - cat
+    - /busybox/cat
     tty: true
     volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+      - name: jenkins-docker-cfg
+        mountPath: /kaniko/.docker
+    resources:
+      limits:
+        memory: 2Gi
+        cpu: 500m
+      requests:
+        memory: 512Mi
+        cpu: 250m
   volumes:
-  - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+  - name: jenkins-docker-cfg
+    secret:
+      secretName: regcred
+      items:
+        - key: .dockerconfigjson
+          path: config.json
+  - emptyDir:
+      medium: ""
+    name: "workspace-volume"
 '''
             defaultContainer 'golang'
         }
@@ -46,9 +60,8 @@ spec:
     }
 
     environment {
-        DOCKER_REGISTRY = 'your-registry.example.com'  // Replace with your Docker registry
-        DOCKER_REPOSITORY = 'apigateway'
-        DOCKER_CREDENTIALS_ID = 'docker-credentials'   // Jenkins credentials ID for Docker registry
+        REGISTRY = "fixyimage.azurecr.io"
+        IMAGE_NAME = "oortfy/apigateway"
     }
 
     stages {
@@ -95,15 +108,17 @@ spec:
 
         stage('Build Docker Image') {
             steps {
-                container('docker') {
+                container('kaniko') {
                     script {
                         def version = params.VERSION ?: sh(script: 'git describe --tags --always', returnStdout: true).trim()
                         
-                        // Build Docker image
-                        sh """
-                        docker build -t ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:${version} .
-                        docker tag ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:${version} ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:latest
-                        """
+                        // Build and push Docker image using Kaniko
+                        sh "/kaniko/executor --context=\$PWD --destination=${env.REGISTRY}/${env.IMAGE_NAME}:${version}"
+                        
+                        // Also tag as latest if a specific version is provided
+                        if (params.VERSION) {
+                            sh "/kaniko/executor --context=\$PWD --destination=${env.REGISTRY}/${env.IMAGE_NAME}:latest --cleanup"
+                        }
                     }
                 }
             }
@@ -111,23 +126,10 @@ spec:
 
         stage('Push Docker Image') {
             when {
-                expression { return params.PUSH_DOCKER }
+                expression { return false } // Disable this stage as Kaniko handles pushing
             }
             steps {
-                container('docker') {
-                    script {
-                        def version = params.VERSION ?: sh(script: 'git describe --tags --always', returnStdout: true).trim()
-                        
-                        // Login to Docker registry
-                        withCredentials([usernamePassword(credentialsId: env.DOCKER_CREDENTIALS_ID, passwordVariable: 'DOCKER_PASSWORD', usernameVariable: 'DOCKER_USERNAME')]) {
-                            sh """
-                            echo "${DOCKER_PASSWORD}" | docker login ${env.DOCKER_REGISTRY} -u "${DOCKER_USERNAME}" --password-stdin
-                            docker push ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:${version}
-                            docker push ${env.DOCKER_REGISTRY}/${env.DOCKER_REPOSITORY}:latest
-                            """
-                        }
-                    }
-                }
+                echo "Skipped - Kaniko handles the image push automatically"
             }
         }
     }

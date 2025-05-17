@@ -54,6 +54,12 @@ spec:
         }
     }
 
+    environment {
+        REGISTRY = "fixyimage.azurecr.io"
+        IMAGE_NAME = "oortfy/apigateway"
+        IMAGE_TAG = "${BUILD_NUMBER}"
+    }
+
     stages {
         stage('Setup') {
             steps {
@@ -137,7 +143,7 @@ spec:
             steps {
                 container('kaniko') {
                     // Build Docker image using Kaniko
-                    sh '/kaniko/executor --context=$PWD --destination=apigateway:latest'
+                    sh '/kaniko/executor --context=$PWD --destination=${REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG} --cleanup'
                 }
             }
         }
