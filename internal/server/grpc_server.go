@@ -83,7 +83,7 @@ func (s *GRPCServer) RegisterRoutes() error {
 	// Register UnknownServiceHandler to capture all incoming requests
 	s.server.RegisterService(&grpc.ServiceDesc{
 		ServiceName: "gateway",
-		HandlerType: nil,
+		HandlerType: (*any)(nil),
 		Methods:     []grpc.MethodDesc{},
 		Streams:     []grpc.StreamDesc{},
 		Metadata:    nil,

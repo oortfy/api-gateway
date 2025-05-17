@@ -156,7 +156,7 @@ func (s *Server) Start() error {
 		}
 	}
 
-	if hasGRPCRoutes {
+	if hasGRPCRoutes && s.grpcServer != nil && s.config.GRPC.Enabled {
 		go func() {
 			if err := s.grpcServer.Start(); err != nil {
 				s.log.Error("gRPC server error", logger.Error(err))

@@ -117,7 +117,7 @@ docker-run:
 
 docker-compose:
 	@echo "Running with Docker Compose..."
-	@docker-compose up -d
+	@docker compose up -d
 
 docker-test:
 	@echo "Running tests in Docker..."

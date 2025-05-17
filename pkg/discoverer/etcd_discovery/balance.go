@@ -23,7 +23,7 @@ func (s *ServiceDiscovery) GetNextAddr(serviceName string, strategy LoadBalanceS
 
 	switch strategy {
 	case RoundRobin:
-		// 简单轮询实现
+		// Simple polling implementation
 		lastIndex := s.lastIndex[serviceName]
 		nextIndex := (lastIndex + 1) % len(addrs)
 		s.lastIndex[serviceName] = nextIndex

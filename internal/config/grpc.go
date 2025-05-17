@@ -4,6 +4,9 @@ import "time"
 
 // GRPCConfig holds gRPC-specific configuration
 type GRPCConfig struct {
+	// Enabled controls whether the gRPC server should be started
+	Enabled bool `yaml:"enabled" default:"false"`
+
 	// MaxIdleTime is the maximum time a connection can be idle before being closed
 	MaxIdleTime time.Duration `yaml:"max_idle_time" default:"5m"`
 
@@ -29,6 +32,7 @@ type GRPCConfig struct {
 // DefaultGRPCConfig returns the default gRPC configuration
 func DefaultGRPCConfig() *GRPCConfig {
 	return &GRPCConfig{
+		Enabled:          false,
 		MaxIdleTime:      5 * time.Minute,
 		MaxConnections:   100,
 		MaxRecvMsgSize:   16 * 1024 * 1024, // 16MB

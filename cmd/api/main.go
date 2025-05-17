@@ -23,7 +23,8 @@ func getEnvOrDefault(key, defaultValue string) string {
 
 func main() {
 	// Load configuration
-	cfg, err := config.LoadConfig("config.yaml")
+	configPath := getEnvOrDefault("CONFIG_PATH", "configs/config.yaml")
+	cfg, err := config.LoadConfig(configPath)
 	if err != nil {
 		fmt.Printf("Failed to load config: %v\n", err)
 		os.Exit(1)
@@ -44,7 +45,7 @@ func main() {
 		Fields: map[string]string{
 			"service":     getEnvOrDefault("SERVICE", "api-gateway"),
 			"environment": getEnvOrDefault("ENV", "production"),
-			"version":     getEnvOrDefault("VERSION", "1.0.0"),
+			"version":     getEnvOrDefault("VERSION", "0.0.1"),
 		},
 		Redact: []string{
 			"jwt_secret",
@@ -59,11 +60,12 @@ func main() {
 	log := logger.NewLogger(logConfig)
 
 	// Load route configuration
-	routes, err := config.LoadRoutes("routes.yaml")
+	routesPath := getEnvOrDefault("ROUTES_PATH", "configs/routes.yaml")
+	routes, err := config.LoadRoutes(routesPath)
 	if err != nil {
 		log.Fatal("Failed to load route config",
 			logger.Error(err),
-			logger.String("config_file", "configs/routes.yaml"))
+			logger.String("config_file", routesPath))
 	}
 
 	// Create and start server
