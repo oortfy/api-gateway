@@ -10,7 +10,7 @@ go get -v github.com/stretchr/testify
 echo "Running go build with buildvcs=false..."
 go build -buildvcs=false -o /tmp/apigateway ./cmd/api
 
-echo "Running tests for specific packages..."
-go test -v -buildvcs=false ./internal/config/... ./internal/middleware/... ./internal/handlers/...
+echo "Running tests for the entire project..."
+go test -v -buildvcs=false ./...
 
 echo "All tests completed!" 
