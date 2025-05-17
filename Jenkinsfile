@@ -24,17 +24,20 @@ spec:
     - cat
     tty: true
   - name: docker
-    image: docker:latest
+    image: docker:dind
+    securityContext:
+      privileged: true
     command:
     - cat
     tty: true
-    volumeMounts:
-    - name: docker-sock
-      mountPath: /var/run/docker.sock
+    env:
+    - name: DOCKER_HOST
+      value: tcp://localhost:2375
+    - name: DOCKER_TLS_CERTDIR
+      value: ""
   volumes:
   - name: docker-sock
-    hostPath:
-      path: /var/run/docker.sock
+    emptyDir: {}
 '''
             defaultContainer 'golang'
         }
