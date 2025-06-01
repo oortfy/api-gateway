@@ -72,9 +72,10 @@ func (c *CORSMiddleware) CORS(next http.Handler) http.Handler {
 // corsResponseWriter wraps http.ResponseWriter to handle CORS headers
 type corsResponseWriter struct {
 	http.ResponseWriter
-	config *config.CORSConfig
-	origin string
-	log    logger.Logger
+	config      *config.CORSConfig
+	origin      string
+	log         logger.Logger
+	wroteHeader bool
 }
 
 // handlePreflight processes OPTIONS preflight requests
@@ -93,18 +94,25 @@ func (w *corsResponseWriter) handlePreflight(requestMethod string) {
 	)
 
 	// Preflight request completed
+	w.wroteHeader = true
 	w.WriteHeader(http.StatusOK)
 }
 
 // WriteHeader overrides the original WriteHeader to ensure CORS headers are set first
 func (w *corsResponseWriter) WriteHeader(statusCode int) {
+	if w.wroteHeader {
+		return
+	}
+	w.wroteHeader = true
 	w.setCORSHeaders()
 	w.ResponseWriter.WriteHeader(statusCode)
 }
 
 // Write overrides the original Write to ensure CORS headers are set
 func (w *corsResponseWriter) Write(b []byte) (int, error) {
-	w.setCORSHeaders()
+	if !w.wroteHeader {
+		w.WriteHeader(http.StatusOK)
+	}
 	return w.ResponseWriter.Write(b)
 }
 

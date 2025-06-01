@@ -43,8 +43,8 @@ routes:
         per_try_timeout: 5
         retry_on: ["connection_error", "server_error"]
 
-  - path: "/project"
-    upstream: "http://host.docker.internal:8002"
+  - path: "/project/*"
+    upstream: "http://projects:8002"
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false

@@ -14,9 +14,9 @@ import (
 )
 
 var (
-	ip2db      *ip2location.DB
-	ip2dbOnce  sync.Once
-	ip2dbError error
+	ip2db        *ip2location.DB
+	ip2dbOnce    sync.Once
+	ip2dbError   error
 	ip2dbEnabled bool
 )
 
@@ -95,26 +95,24 @@ func GetClientIP(r *http.Request) string {
 func GetGeoLocation(ipStr string, log logger.Logger) string {
 	// Initialize the geolocation database if it's not already loaded
 	ip2dbOnce.Do(func() {
-		log.Info("Initializing IP2Location database...")
+		log.Info("Initializing IP2Location database")
 
 		// Look for the IP2Location database in possible locations
 		dbPath := findIP2LocationDatabase(log)
 		if dbPath == "" {
 			ip2dbError = fmt.Errorf("IP2Location database not found")
-			log.Warn("IP2Location database not found. Geolocation features will be disabled.")
+			log.Info("IP2Location database not found - geolocation features disabled")
 			ip2dbEnabled = false
 			return
 		}
 
-		log.Info("Found IP2Location database", logger.String("path", dbPath))
+		log.Debug("Found IP2Location database", logger.String("path", dbPath))
 
 		// Check if the file is readable
 		file, err := os.Open(dbPath)
 		if err != nil {
 			ip2dbError = fmt.Errorf("cannot open IP2Location database: %w", err)
-			log.Warn("Cannot open IP2Location database file. Geolocation features will be disabled.",
-				logger.String("path", dbPath),
-				logger.Error(err))
+			log.Info("Cannot open IP2Location database - geolocation features disabled")
 			ip2dbEnabled = false
 			return
 		}
@@ -124,13 +122,10 @@ func GetGeoLocation(ipStr string, log logger.Logger) string {
 		ip2db, err = ip2location.OpenDB(dbPath)
 		if err != nil {
 			ip2dbError = err
-			log.Warn("Failed to open IP2Location database. Geolocation features will be disabled.",
-				logger.String("path", dbPath),
-				logger.Error(err))
+			log.Info("Failed to open IP2Location database - geolocation features disabled")
 			ip2dbEnabled = false
 		} else {
-			log.Info("Successfully loaded IP2Location database",
-				logger.String("path", dbPath))
+			log.Info("IP2Location database loaded successfully")
 			ip2dbEnabled = true
 		}
 	})
@@ -182,19 +177,17 @@ func findIP2LocationDatabase(log logger.Logger) string {
 		log.Debug("Checking IP2LOCATION_DB_PATH environment variable",
 			logger.String("path", envPath))
 		if _, err := os.Stat(envPath); err == nil {
-			log.Info("Using IP2Location database from environment variable",
-				logger.String("path", envPath))
+			log.Debug("Using IP2Location database from environment variable")
 			return envPath
 		}
-		log.Warn("IP2Location database specified in IP2LOCATION_DB_PATH not found",
-			logger.String("path", envPath))
+		log.Debug("IP2Location database not found at IP2LOCATION_DB_PATH location")
 	}
 
 	// Check common locations
 	for _, loc := range locations {
 		log.Debug("Checking for IP2Location database", logger.String("path", loc))
 		if _, err := os.Stat(loc); err == nil {
-			log.Info("Found IP2Location database", logger.String("path", loc))
+			log.Debug("Found IP2Location database", logger.String("path", loc))
 			return loc
 		}
 	}
@@ -214,14 +207,12 @@ func findIP2LocationDatabase(log logger.Logger) string {
 		log.Debug("Checking for IP2Location database in executable dir",
 			logger.String("path", dbPath))
 		if _, err := os.Stat(dbPath); err == nil {
-			log.Info("Found IP2Location database in executable directory",
-				logger.String("path", dbPath))
+			log.Debug("Found IP2Location database in executable directory")
 			return dbPath
 		}
 	} else {
 		log.Debug("Could not determine executable path", logger.Error(err))
 	}
 
-	log.Warn("IP2Location database not found in any location. Geolocation features will be disabled.")
 	return ""
 }

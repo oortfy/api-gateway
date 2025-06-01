@@ -148,7 +148,40 @@ func (rl *RateLimiter) getClientIP(r *http.Request) string {
 	return ip
 }
 
-// RateLimit middleware applies rate limiting to requests
+// findMatchingRateLimitPath finds the closest matching rate limit path for the given request path
+func (rl *RateLimiter) findMatchingRateLimitPath(requestPath string) string {
+	// First try exact match
+	if _, exists := rl.limits[requestPath]; exists {
+		return requestPath
+	}
+
+	// Clean the requestPath to ensure consistent format
+	cleanedPath := strings.TrimSuffix(requestPath, "/")
+
+	// Try to find a configured path that is a prefix of the request path
+	var bestMatch string
+	bestMatchLen := 0
+
+	for path := range rl.limits {
+		// Clean the configured path to ensure consistent format
+		cleanPath := strings.TrimSuffix(path, "/")
+
+		// Check if path is a prefix of the request path
+		if strings.HasPrefix(cleanedPath, cleanPath) ||
+			strings.HasPrefix(cleanedPath+"/", cleanPath) ||
+			strings.HasPrefix(cleanPath, cleanedPath) {
+			// If it's a prefix, and it's longer than our current best match, use it
+			if len(cleanPath) > bestMatchLen {
+				bestMatch = path
+				bestMatchLen = len(cleanPath)
+			}
+		}
+	}
+
+	return bestMatch
+}
+
+// RateLimit applies rate limiting to requests
 func (rl *RateLimiter) RateLimit(next http.Handler, route config.Route) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Skip rate limiting if not configured for this route
@@ -169,16 +202,21 @@ func (rl *RateLimiter) RateLimit(next http.Handler, route config.Route) http.Han
 		}
 
 		pathKey := route.Path
-		rl.log.Debug("Rate limit check",
-			logger.String("path", r.URL.Path),
-			logger.String("pathKey", pathKey),
-			logger.String("clientID", clientID))
+		// Find the matching rate limit path
+		matchingPath := rl.findMatchingRateLimitPath(pathKey)
+
+		if matchingPath == "" {
+			// If no matching path found but rate limiting is configured for this route,
+			// add a default rate limit for this path
+			if route.Middlewares.RateLimit != nil {
+				rl.AddLimit(pathKey, *route.Middlewares.RateLimit)
+				matchingPath = pathKey
+			}
+		}
 
 		// Get the bucket for this client
-		bucket := rl.getBucket(pathKey, clientID)
+		bucket := rl.getBucket(matchingPath, clientID)
 		if bucket == nil {
-			rl.log.Warn("No rate limit bucket found for path",
-				logger.String("path", pathKey))
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -192,7 +230,7 @@ func (rl *RateLimiter) RateLimit(next http.Handler, route config.Route) http.Han
 			)
 
 			w.Header().Set("Retry-After", "60") // Suggest retry after period
-			w.Header().Set("X-RateLimit-Limit", "2")
+			w.Header().Set("X-RateLimit-Limit", fmt.Sprintf("%d", int(bucket.maxTokens)))
 			w.Header().Set("X-RateLimit-Remaining", "0")
 			http.Error(w, "Rate limit exceeded. Try again later.", http.StatusTooManyRequests)
 			return

@@ -155,6 +155,35 @@ func (p *HTTPProxy) ProxyRequest(route config.Route) http.Handler {
 			req.Header.Set("X-Forwarded-Host", req.Host)
 			req.Header.Set("X-Forwarded-Proto", req.URL.Scheme)
 			req.Header.Set("X-Gateway-Proxy", "true")
+
+			// Log the upstream request details - but only at debug level
+			p.log.Debug("Upstream Request",
+				logger.String("method", req.Method),
+				logger.String("path", req.URL.Path),
+				logger.String("upstream", targetURL.String()),
+				logger.String("host", req.Host),
+				logger.String("client_ip", clientIP),
+			)
+		}
+
+		// Customize the response modification
+		originalModifyResponse := proxy.ModifyResponse
+		proxy.ModifyResponse = func(resp *http.Response) error {
+			// Log the upstream response - but only at debug level
+			p.log.Debug("Upstream Response",
+				logger.String("method", resp.Request.Method),
+				logger.String("path", resp.Request.URL.Path),
+				logger.String("upstream", targetURL.String()),
+				logger.Int("status", resp.StatusCode),
+				logger.String("content_type", resp.Header.Get("Content-Type")),
+				logger.String("content_length", resp.Header.Get("Content-Length")),
+			)
+
+			// Call the original modifier if it exists
+			if originalModifyResponse != nil {
+				return originalModifyResponse(resp)
+			}
+			return nil
 		}
 
 		// Customize the error handler

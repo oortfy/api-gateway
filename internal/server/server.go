@@ -23,23 +23,24 @@ import (
 
 // Server represents the API Gateway server
 type Server struct {
-	config            *config.Config
-	routes            *config.RouteConfig
-	log               logger.Logger
-	httpServer        *http.Server
-	grpcServer        *GRPCServer
-	router            *mux.Router
-	authService       *auth.AuthService
-	httpProxy         *proxy.HTTPProxy
-	wsProxy           *proxy.WSProxy
-	authMiddleware    *middleware.AuthMiddleware
-	cacheMiddleware   *middleware.CacheMiddleware
-	rateLimiter       *middleware.RateLimiter
-	headerTransformer *middleware.HeaderTransformer
-	urlRewriter       *middleware.URLRewriter
-	retryMiddleware   *middleware.RetryMiddleware
-	metricsMiddleware *middleware.MetricsMiddleware
-	corsMiddleware    *middleware.CORSMiddleware
+	config              *config.Config
+	routes              *config.RouteConfig
+	log                 logger.Logger
+	httpServer          *http.Server
+	grpcServer          *GRPCServer
+	router              *mux.Router
+	authService         *auth.AuthService
+	httpProxy           *proxy.HTTPProxy
+	wsProxy             *proxy.WSProxy
+	authMiddleware      *middleware.AuthMiddleware
+	cacheMiddleware     *middleware.CacheMiddleware
+	rateLimiter         *middleware.RateLimiter
+	headerTransformer   *middleware.HeaderTransformer
+	urlRewriter         *middleware.URLRewriter
+	retryMiddleware     *middleware.RetryMiddleware
+	metricsMiddleware   *middleware.MetricsMiddleware
+	corsMiddleware      *middleware.CORSMiddleware
+	accessLogMiddleware *middleware.AccessLogMiddleware
 }
 
 // NewServer creates a new server instance
@@ -59,6 +60,7 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 	urlRewriter := middleware.NewURLRewriter(log)
 	retryMiddleware := middleware.NewRetryMiddleware(log)
 	metricsMiddleware := middleware.NewMetricsMiddleware(&cfg.Metrics, log)
+	accessLogMiddleware := middleware.NewAccessLogMiddleware(&cfg.Logging, log)
 
 	// Initialize gRPC server
 	grpcServer := NewGRPCServer(cfg, routes, log)
@@ -99,24 +101,31 @@ func NewServer(cfg *config.Config, routes *config.RouteConfig, log logger.Logger
 		log.Info("Applied CORS middleware globally")
 	}
 
+	// Access log middleware should be applied early to log all requests
+	if cfg.Logging.EnableAccess {
+		router.Use(accessLogMiddleware.AccessLog)
+		log.Info("Applied Access Log middleware globally")
+	}
+
 	return &Server{
-		config:            cfg,
-		routes:            routes,
-		log:               log,
-		httpServer:        httpServer,
-		grpcServer:        grpcServer,
-		router:            router,
-		authService:       authService,
-		httpProxy:         httpProxy,
-		wsProxy:           wsProxy,
-		authMiddleware:    authMiddleware,
-		cacheMiddleware:   cacheMiddleware,
-		rateLimiter:       rateLimiter,
-		headerTransformer: headerTransformer,
-		urlRewriter:       urlRewriter,
-		retryMiddleware:   retryMiddleware,
-		metricsMiddleware: metricsMiddleware,
-		corsMiddleware:    corsMiddleware,
+		config:              cfg,
+		routes:              routes,
+		log:                 log,
+		httpServer:          httpServer,
+		grpcServer:          grpcServer,
+		router:              router,
+		authService:         authService,
+		httpProxy:           httpProxy,
+		wsProxy:             wsProxy,
+		authMiddleware:      authMiddleware,
+		cacheMiddleware:     cacheMiddleware,
+		rateLimiter:         rateLimiter,
+		headerTransformer:   headerTransformer,
+		urlRewriter:         urlRewriter,
+		retryMiddleware:     retryMiddleware,
+		metricsMiddleware:   metricsMiddleware,
+		corsMiddleware:      corsMiddleware,
+		accessLogMiddleware: accessLogMiddleware,
 	}
 }
 
