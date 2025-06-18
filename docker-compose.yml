@@ -21,3 +21,9 @@ services:
     volumes:
       - ./configs:/app/configs
     restart: unless-stopped
+    networks:
+      - shared_net
+
+networks:
+  shared_net:
+    external: true
