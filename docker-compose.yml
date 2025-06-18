@@ -5,6 +5,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    hostname: api-gateway-service
     environment:
       # Auth settings
       - JWT_SECRET=${JWT_SECRET}
@@ -20,13 +21,3 @@ services:
     volumes:
       - ./configs:/app/configs
     restart: unless-stopped
-    networks:
-      - fixy-scanner-handler_fixy-network
-      - fixy-auth_auth-network
-      - default
-
-networks:
-  fixy-auth_auth-network:
-    external: true
-  fixy-scanner-handler_fixy-network:
-    external: true
