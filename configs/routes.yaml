@@ -4,17 +4,17 @@ routes:
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 30
+    timeout: 60  # Auth operations should be fast
     middlewares:
       require_auth: false
       rate_limit:
-        requests: 100000
+        requests: 10000  # High throughput for auth
         period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
+        threshold: 10    # Higher threshold for high traffic
+        timeout: 60
+        max_concurrent: 500  # Much higher concurrency
       retry_policy:
         enabled: true
         attempts: 2
@@ -30,13 +30,13 @@ routes:
     middlewares:
       require_auth: true
       rate_limit:
-        requests: 100000
+        requests: 5000  # High throughput for general operations
         period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
+        threshold: 10
+        timeout: 60
+        max_concurrent: 200
       retry_policy:
         enabled: true
         attempts: 2
@@ -48,30 +48,30 @@ routes:
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
     protocol: HTTP
     strip_prefix: false
-    timeout: 30
+    timeout: 900
     middlewares:
       require_auth: true
       rate_limit:
-        requests: 100000
+        requests: 5000
         period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
+        threshold: 10
+        timeout: 60
+        max_concurrent: 200
       retry_policy:
         enabled: true
         attempts: 2
         per_try_timeout: 20
         retry_on: ["connection_error", "server_error"]
 
-  # gRPC to gRPC proxy example
+  # gRPC to gRPC proxy example with enterprise settings
   - path: "com.example.service.UserService/*"
     protocol: "GRPC"
     endpoints_protocol: "GRPC"
     rpc_server: "/api/users"
     upstream: "grpc://user-service:50051"
-    timeout: 30
+    timeout: 120
     compression: true
     load_balancing:
       method: "round_robin"
@@ -80,29 +80,31 @@ routes:
       endpoints:
         - "grpc://user-service-1:50051"
         - "grpc://user-service-2:50051"
+        - "grpc://user-service-3:50051"  # More endpoints
+        - "grpc://user-service-4:50051"
       health_check_config:
-        interval: 10
+        interval: 5    # More frequent health checks
         timeout: 2
     middlewares:
       require_auth: true
       circuit_breaker:
         enabled: true
-        threshold: 5
-        timeout: 30
-        max_concurrent: 100
+        threshold: 15  # Higher for enterprise
+        timeout: 60
+        max_concurrent: 500
       retry_policy:
         enabled: true
         attempts: 2
-        per_try_timeout: 20
+        per_try_timeout: 30
         retry_on: ["unavailable", "deadline_exceeded"]
     
-  # Another gRPC to gRPC example with etcd service discovery
+  # gRPC with etcd service discovery - enterprise configuration
   - path: "com.example.service.ProductService/*"
     protocol: "GRPC"
     endpoints_protocol: "GRPC"
     rpc_server: "/api/products"
-    upstream: "grpc://product-service:50051" # Fallback if service discovery fails
-    timeout: 60
+    upstream: "grpc://product-service:50051"
+    timeout: 180
     compression: true
     load_balancing:
       method: "round_robin"
@@ -111,15 +113,25 @@ routes:
       discoveries:
         name: "product-service"
         prefix: "services"
-        fail_limit: 3
+        fail_limit: 2  # Lower fail limit for faster recovery
       health_check_config:
-        interval: 15
-        timeout: 3
+        interval: 5
+        timeout: 2
     middlewares:
       require_auth: true
       rate_limit:
-        requests: 1000
+        requests: 5000
         period: "minute"
+      circuit_breaker:
+        enabled: true
+        threshold: 15
+        timeout: 60
+        max_concurrent: 300
+      retry_policy:
+        enabled: true
+        attempts: 2
+        per_try_timeout: 45
+        retry_on: ["unavailable", "deadline_exceeded"]
 
   - path: "/scanjobmanager/docker-credentials"
     upstream: "http://scanjobmanager-service:8001"
@@ -130,15 +142,15 @@ routes:
     middlewares:
       require_auth: true
       rate_limit:
-        requests: 10
-        period: "minute"  # Lower rate limit for expensive operations
+        requests: 100   # Reasonable limit for expensive operations
+        period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 3  # Lower threshold since these are expensive
-        timeout: 60   # Longer recovery time
-        max_concurrent: 5  # Lower concurrency limit
+        threshold: 5
+        timeout: 120    # Longer recovery for expensive ops
+        max_concurrent: 20
       retry_policy:
-        enabled: false  # Disable retries for long operations
+        enabled: false  # No retries for long operations
 
   # Long-running scan operations
   - path: "/scanjobmanager/scan/*"
@@ -150,12 +162,12 @@ routes:
     middlewares:
       require_auth: true
       rate_limit:
-        requests: 5
+        requests: 50
         period: "minute"
       circuit_breaker:
         enabled: true
-        threshold: 2
-        timeout: 120
-        max_concurrent: 3
+        threshold: 3
+        timeout: 180
+        max_concurrent: 10
       retry_policy:
         enabled: false

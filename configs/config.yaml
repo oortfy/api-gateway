@@ -1,9 +1,9 @@
 server:
   address: ":8080"
-  read_timeout: 1500
-  write_timeout: 1500
-  idle_timeout: 120
-  max_header_bytes: 1048576
+  read_timeout: 1500  # 25 minutes for long-running operations
+  write_timeout: 1500  # 25 minutes for long-running operations
+  idle_timeout: 300    # 5 minutes - longer for connection reuse
+  max_header_bytes: 2097152  # 2MB for complex enterprise headers
   enable_http2: true
   enable_compression: true
 
@@ -23,8 +23,8 @@ logging:
   stacktrace_level: "error"
   sampling:
     enabled: true
-    initial: 100
-    thereafter: 100
+    initial: 1000     # Higher sampling for enterprise
+    thereafter: 1000
   fields:
     service: "api-gateway"
     environment: "${ENV:-production}"
@@ -35,7 +35,7 @@ logging:
     - "authorization"
     - "password"
     - "token"
-  max_stacktrace_length: 2048
+  max_stacktrace_length: 4096  # Larger for better debugging
 
 security:
   tls:
@@ -49,13 +49,13 @@ security:
   enable_hsts: true
   hsts_max_age: 31536000
   trusted_proxies: ["127.0.0.1", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"]
-  max_body_size: 10485760
+  max_body_size: 104857600  # 100MB for enterprise file uploads
 
 cache:
   enabled: true
-  default_ttl: 60
-  max_ttl: 3600
-  max_size: 1000
+  default_ttl: 300      # 5 minutes default
+  max_ttl: 7200        # 2 hours max
+  max_size: 10000      # 10x larger cache
   include_host: true
   vary_headers: ["Accept", "Accept-Encoding", "Authorization"]
   purge_endpoint: "/admin/cache/purge"
@@ -80,17 +80,17 @@ tracing:
   provider: "jaeger"
   endpoint: "${TRACING_ENDPOINT:-http://jaeger:14268/api/traces}"
   service_name: "api-gateway"
-  sample_rate: 0.1
+  sample_rate: 0.05  # Lower sampling rate for high traffic
 
 etcd:
   hosts: "127.0.0.1:2379"
 
 grpc:
-  enabled: false
-  max_idle_time: "5m"
-  max_connections: 100
-  max_recv_msg_size: 16777216
-  max_send_msg_size: 16777216
-  enable_reflection: true
+  enabled: true  # Enable for better performance
+  max_idle_time: "10m"
+  max_connections: 1000      # Much higher for enterprise
+  max_recv_msg_size: 67108864  # 64MB
+  max_send_msg_size: 67108864  # 64MB
+  enable_reflection: false     # Disable in production
   keepalive_time: "30s"
   keepalive_timeout: "10s"
