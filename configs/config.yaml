@@ -1,7 +1,7 @@
 server:
   address: ":8080"
-  read_timeout: 30
-  write_timeout: 30
+  read_timeout: 1500
+  write_timeout: 1500
   idle_timeout: 120
   max_header_bytes: 1048576
   enable_http2: true
